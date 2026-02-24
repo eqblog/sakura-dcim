@@ -8,6 +8,7 @@ import OverviewTab from './tabs/OverviewTab';
 import PowerTab from './tabs/PowerTab';
 import KvmTab from './tabs/KvmTab';
 import ReinstallTab from './tabs/ReinstallTab';
+import SensorsTab from './tabs/SensorsTab';
 import BandwidthTab from './tabs/BandwidthTab';
 import InventoryTab from './tabs/InventoryTab';
 
@@ -80,7 +81,8 @@ const ServerDetailPage: React.FC = () => {
 
   const tabItems = [
     { key: 'overview', label: 'Overview', children: <OverviewTab server={server} /> },
-    { key: 'power', label: 'Power', children: <PowerTab /> },
+    { key: 'power', label: 'Power', children: <PowerTab serverId={server.id} /> },
+    { key: 'sensors', label: 'Sensors', children: <SensorsTab serverId={server.id} /> },
     { key: 'kvm', label: 'KVM', children: <KvmTab serverId={server.id} /> },
     { key: 'reinstall', label: 'Reinstall', children: <ReinstallTab /> },
     { key: 'bandwidth', label: 'Bandwidth', children: <BandwidthTab /> },

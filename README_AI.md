@@ -92,8 +92,16 @@ Inspired by [Tenantos](https://tenantos.com/) and [EasyDCIM](https://www.easydci
 - **User Management** — CRUD with password hashing, role assignment
 - **Role Management** — CRUD with permission checkboxes (25+ permissions)
 - **Tenant Management** — Multi-tenant hierarchy CRUD
-- **Server Detail Page** — Tabbed UI (Overview / Power / KVM / Reinstall / Bandwidth / Inventory)
+- **Server Detail Page** — Tabbed UI (Overview / Power / Sensors / KVM / Reinstall / Bandwidth / Inventory)
 - **Agent Detail Page** — Live status, version, capabilities display
+
+#### Phase 3 — IPMI Power Control + Sensor Monitoring
+- **Power Control** — On / Off / Reset / Cycle via agent-proxied ipmitool with confirmation dialogs
+- **Live Power Status** — Real-time power state polling (15s interval) with status badge
+- **IPMI Sensors** — Temperature, fan speed, voltage readings via ipmitool SDR with status tags
+- **Backend IPMI Service** — Credential decryption, agent dispatch via WebSocket hub
+- **Backend IPMI Handler** — `POST /servers/:id/power` + `GET /servers/:id/power` + `GET /servers/:id/sensors`
+- **RBAC Protected** — `server.power` permission for power control, `ipmi.sensors` for sensor reading
 
 #### Phase 4 — NoVNC KVM Console (Docker Browser Isolation)
 - **KVM Docker Image** — Alpine + Xvfb + x11vnc + Chromium kiosk mode
@@ -107,13 +115,12 @@ Inspired by [Tenantos](https://tenantos.com/) and [EasyDCIM](https://www.easydci
 
 | Feature | Description |
 |---------|-------------|
-| **IPMI Power Control** | On / Off / Reset / Cycle via agent-proxied ipmitool |
 | **PXE OS Reinstall** | One-click unattended OS reinstallation via PXE boot |
 | **Auto RAID** | Automatic RAID 1/5/10 based on disk count, or customer-selected |
 | **Disk Layouts** | Custom partition table templates per server tag or OS profile |
 | **Post-Install Scripts** | Shell scripts executed after OS installation |
 | **SNMP Bandwidth** | Switch port monitoring, traffic stats, 95th percentile billing |
-| **IPMI Sensor Graphs** | Temperature, fan speed, voltage charts via InfluxDB |
+| **IPMI Sensor Graphs** | Temperature, fan speed, voltage time-series charts via InfluxDB |
 | **Hardware Inventory** | Auto-detect CPU, RAM, disks, NICs via PXE boot or shell command |
 | **IP Pool Management** | CIDR-based IP pools with assignment tracking |
 | **White-Label** | Custom domain, logo, colors, favicon per tenant |
@@ -313,8 +320,9 @@ Servers:
   GET    /api/v1/servers/:id          # Detail
   PUT    /api/v1/servers/:id          # Update
   DELETE /api/v1/servers/:id          # Delete
-  POST   /api/v1/servers/:id/power    # Power control
-  GET    /api/v1/servers/:id/sensors  # IPMI sensors
+  POST   /api/v1/servers/:id/power    # Power control ✅
+  GET    /api/v1/servers/:id/power    # Power status ✅
+  GET    /api/v1/servers/:id/sensors  # IPMI sensors ✅
   POST   /api/v1/servers/:id/kvm     # Start KVM session ✅
   DELETE /api/v1/servers/:id/kvm     # Stop KVM session ✅
   POST   /api/v1/servers/:id/reinstall # OS reinstall
@@ -349,9 +357,9 @@ Audit:
 |-------|-------|--------|
 | 1 | Foundation — Auth, RBAC, DB, Layout, Docker | ✅ Done |
 | 2 | Server CRUD + Agent WebSocket wiring | ✅ Done |
-| 3 | IPMI Power Control + Sensor Monitoring | 🔲 Next |
+| 3 | IPMI Power Control + Sensor Monitoring | ✅ Done |
 | 4 | NoVNC KVM Console (Docker Browser Isolation) | ✅ Done |
-| 5 | PXE OS Reinstall + Auto RAID + Scripts | 🔲 |
+| 5 | PXE OS Reinstall + Auto RAID + Scripts | 🔲 Next |
 | 6 | SNMP Bandwidth Monitoring + Charts | 🔲 |
 | 7 | Hardware Inventory + IP Management | 🔲 |
 | 8 | White-Label + Multi-Tenant Polish | 🔲 |
@@ -373,15 +381,15 @@ Audit:
 - [x] `web` Tenant management page
 - [ ] `agent` Config hot-reload support (deferred)
 
-### Phase 3 — IPMI & Power Management
-- [ ] `backend` IPMI service: power control via agent WebSocket (decrypt creds → send to agent)
-- [ ] `backend` IPMI handler: POST /servers/:id/power, GET /servers/:id/power
-- [ ] `backend` IPMI sensor handler: GET /servers/:id/sensors
-- [ ] `backend` Sensor data collector → write to InfluxDB on interval
-- [ ] `backend` InfluxDB repository: write sensor readings, query time-series
-- [ ] `web` Server Power tab: buttons (On/Off/Reset/Cycle) + live status badge
-- [ ] `web` Server Sensors tab: real-time sensor table + temperature/fan/voltage charts
-- [ ] `agent` IPMI executor: SOL (Serial Over LAN) support
+### Phase 3 — IPMI & Power Management ✅
+- [x] `backend` IPMI service: power control + sensors via agent WebSocket (decrypt creds → send to agent)
+- [x] `backend` IPMI handler: POST /servers/:id/power, GET /servers/:id/power
+- [x] `backend` IPMI sensor handler: GET /servers/:id/sensors
+- [x] `web` Server Power tab: buttons (On/Off/Reset/Cycle) + live status badge + confirmation dialogs
+- [x] `web` Server Sensors tab: real-time sensor table with status tags + auto-refresh
+- [ ] `backend` Sensor data collector → write to InfluxDB on interval (deferred to Phase 6)
+- [ ] `backend` InfluxDB repository: write sensor readings, query time-series (deferred to Phase 6)
+- [ ] `agent` IPMI executor: SOL (Serial Over LAN) support (deferred)
 
 ### Phase 4 — NoVNC KVM Console (Docker Browser Isolation) ✅
 - [x] `docker` KVM browser image: Alpine + Xvfb + x11vnc + Chromium kiosk mode

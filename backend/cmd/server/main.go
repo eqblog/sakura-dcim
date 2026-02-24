@@ -74,6 +74,7 @@ func main() {
 	roleService := service.NewRoleService(roleRepo)
 	tenantService := service.NewTenantService(tenantRepo)
 	kvmService := service.NewKVMService(serverRepo, hub, cfg, logger)
+	ipmiService := service.NewIPMIService(serverRepo, hub, cfg, logger)
 
 	// Register heartbeat event handler
 	hub.OnEvent(ws.ActionAgentHeartbeat, func(agentID uuid.UUID, msg *ws.Message) {
@@ -128,6 +129,10 @@ func main() {
 
 	tenantHandler := handler.NewTenantHandler(tenantService)
 	tenantHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermTenantManage)))
+
+	ipmiHandler := handler.NewIPMIHandler(ipmiService)
+	ipmiHandler.RegisterPowerRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermServerPower)))
+	ipmiHandler.RegisterSensorRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermIPMISensors)))
 
 	kvmHandler := handler.NewKVMHandler(kvmService, logger)
 	kvmHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermIPMIKVM)))
