@@ -1,0 +1,38 @@
+# Go
+backend/bin/
+agent/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# React
+web/node_modules/
+web/dist/
+web/.env.local
+web/.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker/data/
+
+# Environment
+.env
+*.env.local
+
+# Logs
+*.log

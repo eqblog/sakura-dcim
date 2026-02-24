@@ -1,0 +1,11 @@
+# Sakura DCIM Agent Configuration
+# Copy this file to config.yaml and fill in the values
+
+# WebSocket URL to the control panel
+server_url: "ws://panel.example.com/api/v1/agents/ws"
+
+# Agent ID (assigned by the panel when you create an agent)
+agent_id: "your-agent-uuid-here"
+
+# Agent authentication token (shown once when creating the agent)
+token: "your-agent-token-here"

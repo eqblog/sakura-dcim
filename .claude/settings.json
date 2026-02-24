@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:tenantos.com)",
+      "WebFetch(domain:www.easydcim.com)",
+      "Bash(python3 -c \":*)",
+      "Bash(git init)",
+      "Bash(go mod init github.com/sakura-dcim/sakura-dcim/backend)",
+      "Bash(go mod tidy)",
+      "Bash(npm create vite@latest web -- --template react-ts)",
+      "Bash(npm install)",
+      "Bash(npm install antd @ant-design/icons @ant-design/charts react-router-dom zustand axios @novnc/novnc dayjs)",
+      "Bash(go build ./...)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npm run build)",
+      "Bash(go mod init github.com/sakura-dcim/sakura-dcim/agent)"
+    ]
+  }
+}

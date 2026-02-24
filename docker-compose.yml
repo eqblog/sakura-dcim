@@ -1,0 +1,89 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sakura-postgres
+    environment:
+      POSTGRES_USER: sakura
+      POSTGRES_PASSWORD: sakura
+      POSTGRES_DB: sakura_dcim
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sakura -d sakura_dcim"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: sakura-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  influxdb:
+    image: influxdb:2.7
+    container_name: sakura-influxdb
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: sakura
+      DOCKER_INFLUXDB_INIT_PASSWORD: sakura-dcim
+      DOCKER_INFLUXDB_INIT_ORG: sakura
+      DOCKER_INFLUXDB_INIT_BUCKET: dcim
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: sakura-dcim-influxdb-token
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../docker/backend.Dockerfile
+    container_name: sakura-backend
+    environment:
+      SAKURA_DATABASE_HOST: postgres
+      SAKURA_DATABASE_PORT: 5432
+      SAKURA_DATABASE_USER: sakura
+      SAKURA_DATABASE_PASSWORD: sakura
+      SAKURA_DATABASE_DBNAME: sakura_dcim
+      SAKURA_DATABASE_SSLMODE: disable
+      SAKURA_REDIS_HOST: redis
+      SAKURA_REDIS_PORT: 6379
+      SAKURA_INFLUXDB_URL: http://influxdb:8086
+      SAKURA_INFLUXDB_TOKEN: sakura-dcim-influxdb-token
+      SAKURA_SERVER_MODE: release
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      dockerfile: ../docker/web.Dockerfile
+    container_name: sakura-web
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  influxdb_data:
