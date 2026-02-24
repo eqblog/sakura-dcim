@@ -6,7 +6,9 @@ import AppLayout from './components/Layout/AppLayout';
 import LoginPage from './pages/Login';
 import DashboardPage from './pages/Dashboard';
 import ServerListPage from './pages/Servers';
+import ServerDetailPage from './pages/Servers/ServerDetail';
 import AgentListPage from './pages/Agents';
+import AgentDetailPage from './pages/Agents/AgentDetail';
 import OSProfilesPage from './pages/OSProfiles';
 import BandwidthPage from './pages/Bandwidth';
 import MonitoringPage from './pages/Monitoring';
@@ -15,6 +17,7 @@ import TenantsPage from './pages/Tenants';
 import AuditLogPage from './pages/AuditLog';
 import SettingsPage from './pages/Settings';
 import IPManagementPage from './pages/IPManagement';
+import RolesPage from './pages/Roles';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuthStore();
@@ -56,7 +59,9 @@ const App: React.FC = () => {
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="servers" element={<ServerListPage />} />
+              <Route path="servers/:id" element={<ServerDetailPage />} />
               <Route path="agents" element={<AgentListPage />} />
+              <Route path="agents/:id" element={<AgentDetailPage />} />
               <Route path="os-profiles" element={<OSProfilesPage />} />
               <Route path="disk-layouts" element={<OSProfilesPage />} />
               <Route path="scripts" element={<OSProfilesPage />} />
@@ -65,6 +70,7 @@ const App: React.FC = () => {
               <Route path="bandwidth" element={<BandwidthPage />} />
               <Route path="monitoring" element={<MonitoringPage />} />
               <Route path="users" element={<UsersPage />} />
+              <Route path="roles" element={<RolesPage />} />
               <Route path="tenants" element={<TenantsPage />} />
               <Route path="audit-log" element={<AuditLogPage />} />
               <Route path="settings" element={<SettingsPage />} />

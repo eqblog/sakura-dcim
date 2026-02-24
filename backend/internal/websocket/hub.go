@@ -24,22 +24,45 @@ type AgentConnection struct {
 	pending   map[string]chan *Message
 }
 
+// EventHandler is a callback for agent-initiated events
+type EventHandler func(agentID uuid.UUID, msg *Message)
+
 // Hub manages all agent WebSocket connections
 type Hub struct {
-	agents     map[uuid.UUID]*AgentConnection
-	mu         sync.RWMutex
-	logger     *zap.Logger
-	register   chan *AgentConnection
-	unregister chan *AgentConnection
+	agents        map[uuid.UUID]*AgentConnection
+	mu            sync.RWMutex
+	logger        *zap.Logger
+	register      chan *AgentConnection
+	unregister    chan *AgentConnection
+	eventHandlers map[string]EventHandler
+	eventMu       sync.RWMutex
 }
 
 // NewHub creates a new WebSocket hub
 func NewHub(logger *zap.Logger) *Hub {
 	return &Hub{
-		agents:     make(map[uuid.UUID]*AgentConnection),
-		logger:     logger,
-		register:   make(chan *AgentConnection),
-		unregister: make(chan *AgentConnection),
+		agents:        make(map[uuid.UUID]*AgentConnection),
+		logger:        logger,
+		register:      make(chan *AgentConnection),
+		unregister:    make(chan *AgentConnection),
+		eventHandlers: make(map[string]EventHandler),
+	}
+}
+
+// OnEvent registers a handler for a specific event action
+func (h *Hub) OnEvent(action string, handler EventHandler) {
+	h.eventMu.Lock()
+	defer h.eventMu.Unlock()
+	h.eventHandlers[action] = handler
+}
+
+// dispatchEvent routes an event to the registered handler
+func (h *Hub) dispatchEvent(agentID uuid.UUID, msg *Message) {
+	h.eventMu.RLock()
+	handler, ok := h.eventHandlers[msg.Action]
+	h.eventMu.RUnlock()
+	if ok {
+		go handler(agentID, msg)
 	}
 }
 
@@ -237,11 +260,10 @@ func (c *AgentConnection) handleMessage(msg *Message) {
 		}
 
 	case TypeEvent:
-		// Handle agent-initiated events
 		c.logger.Debug("agent event",
 			zap.String("agent_id", c.AgentID.String()),
 			zap.String("action", msg.Action),
 		)
-		// TODO: Route events to appropriate handlers (PXE status, SNMP data, etc.)
+		c.hub.dispatchEvent(c.AgentID, msg)
 	}
 }

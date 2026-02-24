@@ -133,6 +133,11 @@ func (r *UserRepo) List(ctx context.Context, tenantID uuid.UUID, page, pageSize 
 	}, nil
 }
 
+func (r *UserRepo) UpdatePassword(ctx context.Context, id uuid.UUID, passwordHash string) error {
+	_, err := r.db.Exec(ctx, `UPDATE users SET password_hash = $2 WHERE id = $1`, id, passwordHash)
+	return err
+}
+
 func (r *UserRepo) Update(ctx context.Context, user *domain.User) error {
 	query := `UPDATE users SET email = $2, name = $3, role_id = $4, is_active = $5 WHERE id = $1`
 	_, err := r.db.Exec(ctx, query, user.ID, user.Email, user.Name, user.RoleID, user.IsActive)

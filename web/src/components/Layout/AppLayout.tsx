@@ -77,9 +77,13 @@ const menuItems: MenuProps['items'] = [
     label: 'Monitoring',
   },
   {
-    key: '/users',
+    key: 'users-group',
     icon: <TeamOutlined />,
     label: 'Users',
+    children: [
+      { key: '/users', label: 'Users' },
+      { key: '/roles', label: 'Roles' },
+    ],
   },
   {
     key: '/tenants',
@@ -170,7 +174,7 @@ const AppLayout: React.FC = () => {
         <Menu
           mode="inline"
           selectedKeys={[location.pathname]}
-          defaultOpenKeys={['os-mgmt', 'network']}
+          defaultOpenKeys={['os-mgmt', 'network', 'users-group']}
           items={menuItems}
           onClick={handleMenuClick}
           style={{ borderRight: 0 }}

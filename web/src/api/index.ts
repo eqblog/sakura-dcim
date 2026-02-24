@@ -64,6 +64,8 @@ export const serverAPI = {
 export const agentAPI = {
   list: (params?: Record<string, any>) =>
     client.get<APIResponse<PaginatedResult<Agent>>>('/agents', { params }),
+  get: (id: string) =>
+    client.get<APIResponse<Agent>>(`/agents/${id}`),
   create: (data: { name: string; location: string; capabilities?: string[] }) =>
     client.post<APIResponse<{ agent: Agent; token: string }>>('/agents', data),
   update: (id: string, data: Partial<Agent>) =>
@@ -94,6 +96,8 @@ export const roleAPI = {
     client.put<APIResponse<Role>>(`/roles/${id}`, data),
   delete: (id: string) =>
     client.delete<APIResponse>(`/roles/${id}`),
+  permissions: () =>
+    client.get<APIResponse<string[]>>('/roles/permissions'),
 };
 
 // Tenants
@@ -104,6 +108,8 @@ export const tenantAPI = {
     client.post<APIResponse<Tenant>>('/tenants', data),
   update: (id: string, data: any) =>
     client.put<APIResponse<Tenant>>(`/tenants/${id}`, data),
+  delete: (id: string) =>
+    client.delete<APIResponse>(`/tenants/${id}`),
   settings: (id: string) =>
     client.get<APIResponse>(`/tenants/${id}/settings`),
 };

@@ -14,6 +14,7 @@ type UserRepository interface {
 	GetByEmailAnyTenant(ctx context.Context, email string) (*domain.User, error)
 	List(ctx context.Context, tenantID uuid.UUID, page, pageSize int) (*domain.PaginatedResult[domain.User], error)
 	Update(ctx context.Context, user *domain.User) error
+	UpdatePassword(ctx context.Context, id uuid.UUID, passwordHash string) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	UpdateLastLogin(ctx context.Context, id uuid.UUID) error
 }

@@ -11,10 +11,12 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
 	"github.com/sakura-dcim/sakura-dcim/backend/internal/config"
+	"github.com/sakura-dcim/sakura-dcim/backend/internal/domain"
 	"github.com/sakura-dcim/sakura-dcim/backend/internal/handler"
 	"github.com/sakura-dcim/sakura-dcim/backend/internal/middleware"
 	"github.com/sakura-dcim/sakura-dcim/backend/internal/repository/postgres"
@@ -57,14 +59,27 @@ func main() {
 	roleRepo := postgres.NewRoleRepo(db)
 	serverRepo := postgres.NewServerRepo(db)
 	agentRepo := postgres.NewAgentRepo(db)
+	tenantRepo := postgres.NewTenantRepo(db)
 	auditLogRepo := postgres.NewAuditLogRepo(db)
 
 	// Services
 	authService := service.NewAuthService(userRepo, roleRepo, cfg)
+	serverService := service.NewServerService(serverRepo, cfg)
+	agentService := service.NewAgentService(agentRepo)
+	userService := service.NewUserService(userRepo, roleRepo)
+	roleService := service.NewRoleService(roleRepo)
+	tenantService := service.NewTenantService(tenantRepo)
 
 	// WebSocket Hub
 	hub := ws.NewHub(logger)
 	go hub.Run()
+
+	// Register heartbeat event handler
+	hub.OnEvent(ws.ActionAgentHeartbeat, func(agentID uuid.UUID, msg *ws.Message) {
+		if err := agentService.UpdateLastSeen(context.Background(), agentID); err != nil {
+			logger.Error("failed to update agent last_seen", zap.Error(err), zap.String("agent_id", agentID.String()))
+		}
+	})
 
 	// Gin
 	gin.SetMode(cfg.Server.Mode)
@@ -98,8 +113,20 @@ func main() {
 
 	authHandler.RegisterProtectedRoutes(protected)
 
-	serverHandler := handler.NewServerHandler(serverRepo)
+	serverHandler := handler.NewServerHandler(serverService)
 	serverHandler.RegisterRoutes(protected)
+
+	agentHandler := handler.NewAgentHandler(agentService, hub)
+	agentHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermAgentManage)))
+
+	userHandler := handler.NewUserHandler(userService)
+	userHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermUserManage)))
+
+	roleHandler := handler.NewRoleHandler(roleService)
+	roleHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermRoleManage)))
+
+	tenantHandler := handler.NewTenantHandler(tenantService)
+	tenantHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermTenantManage)))
 
 	// Agent WebSocket endpoint (separate auth)
 	r.GET("/api/v1/agents/ws", func(c *gin.Context) {
