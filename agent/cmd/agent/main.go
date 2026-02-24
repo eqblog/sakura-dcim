@@ -37,6 +37,7 @@ func main() {
 	// Initialize executors
 	ipmiExec := executor.NewIPMIExecutor(logger)
 	inventoryExec := executor.NewInventoryExecutor(logger)
+	kvmExec := executor.NewKVMExecutor(logger)
 
 	// Create WebSocket client
 	wsClient := client.NewWSClient(cfg, logger, map[string]client.ActionHandler{
@@ -47,6 +48,8 @@ func main() {
 		"ipmi.power.status": ipmiExec.HandlePowerStatus,
 		"ipmi.sensors":      ipmiExec.HandleSensors,
 		"inventory.scan":    inventoryExec.HandleScan,
+		"ipmi.kvm.start":    kvmExec.HandleKVMStart,
+		"ipmi.kvm.stop":     kvmExec.HandleKVMStop,
 	})
 
 	// Connect
@@ -64,5 +67,6 @@ func main() {
 	<-quit
 
 	logger.Info("shutting down agent...")
+	kvmExec.StopAll()
 	wsClient.Close()
 }

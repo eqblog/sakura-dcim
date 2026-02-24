@@ -1,0 +1,29 @@
+FROM alpine:3.21
+
+RUN apk add --no-cache \
+    xvfb \
+    x11vnc \
+    chromium \
+    font-noto \
+    font-noto-cjk \
+    dbus \
+    ttf-freefont \
+    mesa-dri-gallium \
+    && rm -rf /var/cache/apk/*
+
+RUN adduser -D -u 1000 kvm
+
+ENV DISPLAY=:99 \
+    SCREEN_WIDTH=1280 \
+    SCREEN_HEIGHT=1024 \
+    SCREEN_DEPTH=24 \
+    VNC_PORT=5900 \
+    TARGET_URL=""
+
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+
+USER kvm
+EXPOSE 5900
+
+ENTRYPOINT ["/start.sh"]

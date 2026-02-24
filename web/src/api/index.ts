@@ -52,8 +52,10 @@ export const serverAPI = {
     client.post<APIResponse>(`/servers/${id}/reinstall`, data),
   reinstallStatus: (id: string) =>
     client.get<APIResponse>(`/servers/${id}/reinstall/status`),
-  kvm: (id: string) =>
-    client.get<APIResponse>(`/servers/${id}/kvm`),
+  kvmStart: (id: string) =>
+    client.post<APIResponse>(`/servers/${id}/kvm`),
+  kvmStop: (id: string, sessionId: string) =>
+    client.delete<APIResponse>(`/servers/${id}/kvm`, { params: { session: sessionId } }),
   bandwidth: (id: string, params?: Record<string, any>) =>
     client.get<APIResponse>(`/servers/${id}/bandwidth`, { params }),
   metrics: (id: string, params?: Record<string, any>) =>

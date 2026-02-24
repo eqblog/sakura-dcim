@@ -62,6 +62,10 @@ func main() {
 	tenantRepo := postgres.NewTenantRepo(db)
 	auditLogRepo := postgres.NewAuditLogRepo(db)
 
+	// WebSocket Hub
+	hub := ws.NewHub(logger)
+	go hub.Run()
+
 	// Services
 	authService := service.NewAuthService(userRepo, roleRepo, cfg)
 	serverService := service.NewServerService(serverRepo, cfg)
@@ -69,10 +73,7 @@ func main() {
 	userService := service.NewUserService(userRepo, roleRepo)
 	roleService := service.NewRoleService(roleRepo)
 	tenantService := service.NewTenantService(tenantRepo)
-
-	// WebSocket Hub
-	hub := ws.NewHub(logger)
-	go hub.Run()
+	kvmService := service.NewKVMService(serverRepo, hub, cfg, logger)
 
 	// Register heartbeat event handler
 	hub.OnEvent(ws.ActionAgentHeartbeat, func(agentID uuid.UUID, msg *ws.Message) {
@@ -127,6 +128,10 @@ func main() {
 
 	tenantHandler := handler.NewTenantHandler(tenantService)
 	tenantHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermTenantManage)))
+
+	kvmHandler := handler.NewKVMHandler(kvmService, logger)
+	kvmHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermIPMIKVM)))
+	kvmHandler.RegisterPublicRoutes(r)
 
 	// Agent WebSocket endpoint (separate auth)
 	r.GET("/api/v1/agents/ws", func(c *gin.Context) {

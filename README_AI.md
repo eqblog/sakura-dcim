@@ -8,7 +8,7 @@ Inspired by [Tenantos](https://tenantos.com/) and [EasyDCIM](https://www.easydci
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Go 1.23 + Gin |
+| Backend | Go 1.25 + Gin |
 | Frontend | React 18 + TypeScript + Ant Design 5 + Vite |
 | Database | PostgreSQL 16 |
 | Cache | Redis 7 |
@@ -85,7 +85,7 @@ Inspired by [Tenantos](https://tenantos.com/) and [EasyDCIM](https://www.easydci
 | Feature | Description |
 |---------|-------------|
 | **IPMI Power Control** | On / Off / Reset / Cycle via agent-proxied ipmitool |
-| **NoVNC KVM Console** | Browser-based IPMI KVM, no Java required. IPMI stays on private network |
+| ~~**NoVNC KVM Console**~~ | ✅ Implemented — Docker browser isolation (Chromium kiosk → BMC web UI), proxied via noVNC |
 | **PXE OS Reinstall** | One-click unattended OS reinstallation via PXE boot |
 | **Auto RAID** | Automatic RAID 1/5/10 based on disk count, or customer-selected |
 | **Disk Layouts** | Custom partition table templates per server tag or OS profile |
@@ -287,7 +287,7 @@ Audit:
 | 1 | Foundation — Auth, RBAC, DB, Layout, Docker | ✅ Done |
 | 2 | Server CRUD + Agent WebSocket wiring | ✅ Done |
 | 3 | IPMI Power Control + Sensor Monitoring | 🔲 Next |
-| 4 | NoVNC KVM Console | 🔲 |
+| 4 | NoVNC KVM Console (Docker Browser Isolation) | ✅ Done |
 | 5 | PXE OS Reinstall + Auto RAID + Scripts | 🔲 |
 | 6 | SNMP Bandwidth Monitoring + Charts | 🔲 |
 | 7 | Hardware Inventory + IP Management | 🔲 |
@@ -320,12 +320,13 @@ Audit:
 - [ ] `web` Server Sensors tab: real-time sensor table + temperature/fan/voltage charts
 - [ ] `agent` IPMI executor: SOL (Serial Over LAN) support
 
-### Phase 4 — NoVNC KVM Console
-- [ ] `agent` KVM proxy: open IPMI KVM → expose local WebSocket
-- [ ] `backend` KVM handler: GET /servers/:id/kvm → generate short-lived session token
-- [ ] `backend` KVM WebSocket proxy: browser ↔ backend ↔ agent KVM tunnel
-- [ ] `web` KVM Console page: embed @novnc/novnc, full-screen toggle, clipboard sync
-- [ ] `web` KVM session management: auto-disconnect on tab close
+### Phase 4 — NoVNC KVM Console (Docker Browser Isolation) ✅
+- [x] `docker` KVM browser image: Alpine + Xvfb + x11vnc + Chromium kiosk mode
+- [x] `agent` KVM executor: Docker container lifecycle + VNC TCP↔WebSocket relay
+- [x] `backend` KVM service: session management, IPMI credential decryption, agent dispatch
+- [x] `backend` KVM handler: POST /servers/:id/kvm + WebSocket relay (browser↔backend↔agent)
+- [x] `backend` KVM WebSocket proxy: /kvm/ws (browser) + /kvm/relay (agent) dual-endpoint
+- [x] `web` KVM Console page: noVNC integration, fullscreen toggle, auto-disconnect on close
 
 ### Phase 5 — PXE & OS Reinstallation
 - [ ] `backend` OS Profile CRUD handler + service

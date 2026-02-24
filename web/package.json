@@ -12,7 +12,7 @@
   "dependencies": {
     "@ant-design/charts": "^2.6.7",
     "@ant-design/icons": "^6.1.0",
-    "@novnc/novnc": "^1.6.0",
+    "@novnc/novnc": "^1.5.0",
     "antd": "^6.3.0",
     "axios": "^1.13.5",
     "dayjs": "^1.11.19",
