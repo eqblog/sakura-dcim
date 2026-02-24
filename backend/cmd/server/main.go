@@ -65,6 +65,8 @@ func main() {
 	diskLayoutRepo := postgres.NewDiskLayoutRepo(db)
 	scriptRepo := postgres.NewScriptRepo(db)
 	installTaskRepo := postgres.NewInstallTaskRepo(db)
+	switchRepo := postgres.NewSwitchRepo(db)
+	switchPortRepo := postgres.NewSwitchPortRepo(db)
 
 	// WebSocket Hub
 	hub := ws.NewHub(logger)
@@ -83,6 +85,8 @@ func main() {
 	diskLayoutService := service.NewDiskLayoutService(diskLayoutRepo)
 	scriptService := service.NewScriptService(scriptRepo)
 	reinstallService := service.NewReinstallService(serverRepo, osProfileRepo, diskLayoutRepo, scriptRepo, installTaskRepo, hub, cfg, logger)
+	switchService := service.NewSwitchService(switchRepo, switchPortRepo, hub, logger)
+	bandwidthService := service.NewBandwidthService(switchRepo, switchPortRepo, hub, logger)
 
 	// Register heartbeat event handler
 	hub.OnEvent(ws.ActionAgentHeartbeat, func(agentID uuid.UUID, msg *ws.Message) {
@@ -93,6 +97,9 @@ func main() {
 
 	// Register PXE status event handler
 	hub.OnEvent(ws.ActionPXEStatus, reinstallService.HandlePXEStatusEvent)
+
+	// Register SNMP data event handler
+	hub.OnEvent(ws.ActionSNMPData, bandwidthService.HandleSNMPDataEvent)
 
 	// Gin
 	gin.SetMode(cfg.Server.Mode)
@@ -156,6 +163,12 @@ func main() {
 
 	reinstallHandler := handler.NewReinstallHandler(reinstallService)
 	reinstallHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermOSReinstall)))
+
+	switchHandler := handler.NewSwitchHandler(switchService)
+	switchHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermSwitchManage)))
+
+	bandwidthHandler := handler.NewBandwidthHandler(bandwidthService)
+	bandwidthHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermBandwidthView)))
 
 	kvmHandler := handler.NewKVMHandler(kvmService, logger)
 	kvmHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermIPMIKVM)))

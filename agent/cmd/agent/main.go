@@ -40,6 +40,8 @@ func main() {
 	kvmExec := executor.NewKVMExecutor(logger)
 	pxeExec := executor.NewPXEExecutor(logger)
 	raidExec := executor.NewRAIDExecutor(logger)
+	switchExec := executor.NewSwitchExecutor(logger)
+	snmpExec := executor.NewSNMPExecutor(logger)
 
 	// Create WebSocket client
 	wsClient := client.NewWSClient(cfg, logger, map[string]client.ActionHandler{
@@ -56,6 +58,9 @@ func main() {
 		"pxe.cleanup":       pxeExec.HandlePXECleanup,
 		"raid.configure":    raidExec.HandleRAIDConfigure,
 		"raid.status":       raidExec.HandleRAIDStatus,
+		"switch.provision":  switchExec.HandleSwitchProvision,
+		"switch.status":     switchExec.HandleSwitchStatus,
+		"snmp.poll":         snmpExec.HandleSNMPPoll,
 	})
 
 	// Connect

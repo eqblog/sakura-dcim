@@ -79,6 +79,10 @@ const (
 	ActionInventoryScan   = "inventory.scan"
 	ActionInventoryResult = "inventory.result"
 
+	// Switch
+	ActionSwitchProvision = "switch.provision"
+	ActionSwitchStatus    = "switch.status"
+
 	// SNMP
 	ActionSNMPPoll = "snmp.poll"
 	ActionSNMPData = "snmp.data"

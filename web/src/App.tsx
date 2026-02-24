@@ -12,6 +12,7 @@ import AgentDetailPage from './pages/Agents/AgentDetail';
 import OSProfilesPage from './pages/OSProfiles';
 import DiskLayoutsPage from './pages/DiskLayouts';
 import ScriptsPage from './pages/Scripts';
+import SwitchesPage from './pages/Switches';
 import BandwidthPage from './pages/Bandwidth';
 import MonitoringPage from './pages/Monitoring';
 import UsersPage from './pages/Users';
@@ -67,7 +68,7 @@ const App: React.FC = () => {
               <Route path="os-profiles" element={<OSProfilesPage />} />
               <Route path="disk-layouts" element={<DiskLayoutsPage />} />
               <Route path="scripts" element={<ScriptsPage />} />
-              <Route path="switches" element={<BandwidthPage />} />
+              <Route path="switches" element={<SwitchesPage />} />
               <Route path="ip-pools" element={<IPManagementPage />} />
               <Route path="bandwidth" element={<BandwidthPage />} />
               <Route path="monitoring" element={<MonitoringPage />} />

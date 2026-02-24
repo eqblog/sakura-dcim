@@ -196,9 +196,15 @@ export interface Switch {
   agent_id: string;
   name: string;
   ip: string;
+  vendor: string;
+  model: string;
   snmp_community: string;
   snmp_version: string;
+  ssh_user: string;
+  ssh_pass?: string;
+  ssh_port: number;
   created_at: string;
+  updated_at: string;
 }
 
 export interface SwitchPort {
@@ -208,7 +214,33 @@ export interface SwitchPort {
   port_index: number;
   port_name: string;
   speed_mbps: number;
+  vlan_id: number;
+  admin_status: string;
+  oper_status: string;
   description: string;
+  last_polled?: string;
+}
+
+export interface BandwidthSummary {
+  port_id: string;
+  port_name: string;
+  server_id?: string;
+  speed_mbps: number;
+  in_95th_bps: number;
+  out_95th_bps: number;
+  in_avg_bps: number;
+  out_avg_bps: number;
+  in_max_bps: number;
+  out_max_bps: number;
+  data_points?: BandwidthDataPoint[];
+}
+
+export interface BandwidthDataPoint {
+  timestamp: string;
+  in_bytes: number;
+  out_bytes: number;
+  in_bps: number;
+  out_bps: number;
 }
 
 // IP Management

@@ -92,3 +92,20 @@ type InstallTaskRepository interface {
 	GetActiveByServerID(ctx context.Context, serverID uuid.UUID) (*domain.InstallTask, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status domain.InstallTaskStatus, progress int, log string) error
 }
+
+type SwitchRepository interface {
+	Create(ctx context.Context, sw *domain.Switch) error
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.Switch, error)
+	List(ctx context.Context) ([]domain.Switch, error)
+	Update(ctx context.Context, sw *domain.Switch) error
+	Delete(ctx context.Context, id uuid.UUID) error
+}
+
+type SwitchPortRepository interface {
+	Create(ctx context.Context, port *domain.SwitchPort) error
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.SwitchPort, error)
+	ListBySwitchID(ctx context.Context, switchID uuid.UUID) ([]domain.SwitchPort, error)
+	GetByServerID(ctx context.Context, serverID uuid.UUID) ([]domain.SwitchPort, error)
+	Update(ctx context.Context, port *domain.SwitchPort) error
+	Delete(ctx context.Context, id uuid.UUID) error
+}

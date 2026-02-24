@@ -15,6 +15,9 @@ import type {
   Script,
   InstallTask,
   ReinstallRequest,
+  Switch,
+  SwitchPort,
+  BandwidthSummary,
   AuditLog,
 } from '../types';
 
@@ -168,6 +171,39 @@ export const reinstallAPI = {
     client.post<APIResponse<InstallTask>>(`/servers/${serverId}/reinstall`, data),
   status: (serverId: string) =>
     client.get<APIResponse<InstallTask>>(`/servers/${serverId}/reinstall/status`),
+};
+
+// Switches
+export const switchAPI = {
+  list: () =>
+    client.get<APIResponse<Switch[]>>('/switches'),
+  get: (id: string) =>
+    client.get<APIResponse<Switch>>(`/switches/${id}`),
+  create: (data: any) =>
+    client.post<APIResponse<Switch>>('/switches', data),
+  update: (id: string, data: any) =>
+    client.put<APIResponse<Switch>>(`/switches/${id}`, data),
+  delete: (id: string) =>
+    client.delete<APIResponse>(`/switches/${id}`),
+  // Ports
+  listPorts: (switchId: string) =>
+    client.get<APIResponse<SwitchPort[]>>(`/switches/${switchId}/ports`),
+  createPort: (switchId: string, data: any) =>
+    client.post<APIResponse<SwitchPort>>(`/switches/${switchId}/ports`, data),
+  updatePort: (switchId: string, portId: string, data: any) =>
+    client.put<APIResponse<SwitchPort>>(`/switches/${switchId}/ports/${portId}`, data),
+  deletePort: (switchId: string, portId: string) =>
+    client.delete<APIResponse>(`/switches/${switchId}/ports/${portId}`),
+  provisionPort: (switchId: string, portId: string) =>
+    client.post<APIResponse>(`/switches/${switchId}/ports/${portId}/provision`),
+  getPortStatus: (switchId: string, portId: string) =>
+    client.get<APIResponse>(`/switches/${switchId}/ports/${portId}/status`),
+};
+
+// Bandwidth
+export const bandwidthAPI = {
+  getServerBandwidth: (serverId: string, period?: string) =>
+    client.get<APIResponse<BandwidthSummary[]>>(`/servers/${serverId}/bandwidth`, { params: { period } }),
 };
 
 // Audit Logs

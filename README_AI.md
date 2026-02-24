@@ -123,11 +123,22 @@ Inspired by [Tenantos](https://tenantos.com/) and [EasyDCIM](https://www.easydci
 - **Agent RAID Executor** — Hardware RAID (storcli) + Software RAID (mdadm) configuration
 - **Real-time Progress** — Agent sends pxe.status events → backend updates task + server status, frontend polls 5s
 
+#### Phase 6 — Switch Automation + Bandwidth Monitoring
+- **Switch CRUD** — Full management with SSH/SNMP credentials, vendor type (Cisco, Juniper, Arista, SONiC, Cumulus)
+- **Switch Port CRUD** — Port mapping with VLAN, speed, admin/oper status, server assignment
+- **SSH Port Provisioning** — One-click auto-configure via agent SSH executor with vendor-specific CLI templates
+- **Live Port Status** — Query real-time port state via agent SSH/SNMP
+- **SNMP Bandwidth Polling** — Agent polls ifInOctets/ifOutOctets via snmpwalk, sends data to backend
+- **95th Percentile** — Bandwidth summary with 95th percentile, average, and max calculations
+- **Bandwidth Tab** — Per-server bandwidth stats with period selector (hourly/daily/monthly)
+- **Agent Switch Executor** — SSH session management (golang.org/x/crypto/ssh) with vendor command templates
+- **Agent SNMP Executor** — snmpwalk-based interface counter polling with parsed port traffic data
+- **DB Migration** — Version-controlled migration adding SSH creds, vendor, VLAN, status fields
+
 ### Planned
 
 | Feature | Description |
 |---------|-------------|
-| **SNMP Bandwidth** | Switch port monitoring, traffic stats, 95th percentile billing |
 | **IPMI Sensor Graphs** | Temperature, fan speed, voltage time-series charts via InfluxDB |
 | **Hardware Inventory** | Auto-detect CPU, RAM, disks, NICs via PXE boot or shell command |
 | **IP Pool Management** | CIDR-based IP pools with assignment tracking |
@@ -221,6 +232,8 @@ WebSocket + JSON, request/response with correlation IDs:
 | `pxe.prepare` | Panel → Agent | Configure DHCP/TFTP for reinstall |
 | `pxe.status` | Agent → Panel | Installation progress updates |
 | `raid.configure` | Panel → Agent | Set up RAID before OS install |
+| `switch.provision` | Panel → Agent | Auto-configure switch port (VLAN, speed, description) |
+| `switch.status` | Panel → Agent | Query switch port status via SSH/SNMP |
 | `inventory.scan` | Panel → Agent | Trigger hardware detection |
 | `snmp.poll` | Panel → Agent | Poll switch bandwidth counters |
 
@@ -335,7 +348,7 @@ Servers:
   DELETE /api/v1/servers/:id/kvm     # Stop KVM session ✅
   POST   /api/v1/servers/:id/reinstall         # OS reinstall ✅
   GET    /api/v1/servers/:id/reinstall/status  # Install progress ✅
-  GET    /api/v1/servers/:id/bandwidth # Bandwidth stats
+  GET    /api/v1/servers/:id/bandwidth         # Bandwidth stats ✅
 
 KVM WebSocket:
   WS     /api/v1/kvm/ws              # Browser noVNC connection ✅
@@ -350,7 +363,10 @@ Resources:
   CRUD   /api/v1/os-profiles          # OS templates
   CRUD   /api/v1/disk-layouts         # Partition templates
   CRUD   /api/v1/scripts              # Post-install scripts
-  CRUD   /api/v1/switches             # SNMP switches
+  CRUD   /api/v1/switches             # Switch management (SSH/Netconf/SNMP) ✅
+  CRUD   /api/v1/switches/:id/ports  # Switch port management ✅
+  POST   /api/v1/switches/:id/ports/:portId/provision  # Auto-provision port ✅
+  GET    /api/v1/switches/:id/ports/:portId/status     # Live port status ✅
   CRUD   /api/v1/ip-pools             # IP address pools
   CRUD   /api/v1/users                # User management
   CRUD   /api/v1/roles                # Role management
@@ -369,8 +385,8 @@ Audit:
 | 3 | IPMI Power Control + Sensor Monitoring | ✅ Done |
 | 4 | NoVNC KVM Console (Docker Browser Isolation) | ✅ Done |
 | 5 | PXE OS Reinstall + Auto RAID + Scripts | ✅ Done |
-| 6 | SNMP Bandwidth Monitoring + Charts | 🔲 Next |
-| 7 | Hardware Inventory + IP Management | 🔲 |
+| 6 | Switch Automation + Bandwidth Monitoring | ✅ Done |
+| 7 | Hardware Inventory + IP Management | 🔲 Next |
 | 8 | White-Label + Multi-Tenant Polish | 🔲 |
 | 9 | Audit Hardening + API Docs + Security | 🔲 |
 
@@ -424,16 +440,18 @@ Audit:
 - [x] `web` Reinstall Wizard: Select OS → RAID config → Disk layout → SSH keys → Review → Install
 - [x] `web` Install progress: real-time progress bar + log stream
 
-### Phase 6 — Bandwidth Monitoring
-- [ ] `backend` Switch CRUD handler + service
-- [ ] `backend` Switch port mapping handler (assign port → server)
-- [ ] `backend` Bandwidth service: query InfluxDB for traffic data
-- [ ] `backend` 95th percentile calculation endpoint
-- [ ] `agent` SNMP executor: periodic polling of ifInOctets/ifOutOctets via gosnmp
-- [ ] `agent` SNMP data → send to panel via WebSocket event → panel writes to InfluxDB
-- [ ] `web` Switches page: CRUD + port mapping table
-- [ ] `web` Server Bandwidth tab: in/out traffic chart (hourly/daily/monthly), 95th line
-- [ ] `web` Bandwidth overview page: top talkers, aggregate stats
+### Phase 6 — Switch Automation & Bandwidth Monitoring ✅
+- [x] `backend` Switch CRUD handler + service (SSH/Netconf credentials, vendor type)
+- [x] `backend` Switch port mapping handler (assign port → server)
+- [x] `backend` Switch port provisioning service: auto-configure VLAN, speed, description via agent SSH
+- [x] `backend` Bandwidth service: 95th percentile, avg, max calculation with period filtering
+- [x] `backend` Bandwidth handler: GET /servers/:id/bandwidth with period parameter
+- [x] `backend` DB migration: 000002_switch_automation (SSH creds, vendor, VLAN, status fields)
+- [x] `agent` Switch executor: SSH session management (golang.org/x/crypto/ssh) + vendor-specific CLI templates (Cisco, Juniper, Arista, SONiC, Cumulus)
+- [x] `agent` SNMP executor: snmpwalk-based interface counter polling (ifDescr/ifInOctets/ifOutOctets/ifSpeed/ifOperStatus)
+- [x] `web` Switches page: CRUD with SSH/SNMP credentials + port management table + provision button
+- [x] `web` Server Bandwidth tab: per-port stats with 95th percentile, period selector
+- [x] `web` Bandwidth overview page: switch list with SNMP status
 
 ### Phase 7 — Inventory & IP Management
 - [ ] `backend` Inventory handler: GET /servers/:id/inventory, POST /servers/:id/inventory/scan
