@@ -8,8 +8,10 @@ echo =========================================
 echo   Sakura DCIM — Starting Development
 echo =========================================
 
-echo [1/5] Starting PostgreSQL, Redis, InfluxDB...
-docker compose up -d postgres redis influxdb
+echo [1/5] Starting PostgreSQL, Redis...
+docker compose up -d postgres redis
+echo          Starting InfluxDB (optional, may be slow on first pull)...
+docker compose up -d influxdb 2>nul || echo          InfluxDB skipped (pull failed, bandwidth monitoring disabled)
 
 echo [2/5] Waiting for PostgreSQL to be ready...
 :wait_pg
@@ -18,6 +20,7 @@ if errorlevel 1 (
     timeout /t 1 /nobreak >nul
     goto wait_pg
 )
+echo          PostgreSQL is ready.
 
 echo [3/5] Running database migrations...
 cd backend
@@ -40,7 +43,7 @@ echo   Login: admin@sakura-dcim.local / admin123
 echo =========================================
 echo.
 
-start "Sakura Backend" cmd /c "cd backend && go run ./cmd/server"
-start "Sakura Frontend" cmd /c "cd web && npm run dev"
+start "Sakura Backend" cmd /c "cd /d "%~dp0..\backend" && go run ./cmd/server"
+start "Sakura Frontend" cmd /c "cd /d "%~dp0..\web" && npm run dev"
 
 echo Services started in separate windows. Close them to stop.
