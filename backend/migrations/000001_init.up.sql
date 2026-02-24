@@ -288,4 +288,4 @@ INSERT INTO roles (id, tenant_id, name, permissions, is_system) VALUES
 -- Default admin user (password: admin123)
 -- bcrypt hash of "admin123"
 INSERT INTO users (id, tenant_id, email, password_hash, name, role_id, is_active) VALUES
-    ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'admin@sakura-dcim.local', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'System Admin', '00000000-0000-0000-0000-000000000001', true);
+    ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'admin@sakura-dcim.local', '$2a$10$kgB.WoZJIqmBL1lm40rSCetQIaSFFmycu0hXC8nVSXK9CCHV4ytOO', 'System Admin', '00000000-0000-0000-0000-000000000001', true);

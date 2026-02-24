@@ -3,6 +3,7 @@ chcp 65001 >nul
 REM Sakura DCIM — One-click development start
 
 cd /d "%~dp0.."
+set ROOT=%cd%
 
 echo =========================================
 echo   Sakura DCIM — Starting Development
@@ -23,13 +24,14 @@ if errorlevel 1 (
 echo          PostgreSQL is ready.
 
 echo [3/5] Running database migrations...
-cd backend
+cd /d "%ROOT%\backend"
 go run -tags "postgres" github.com/golang-migrate/migrate/v4/cmd/migrate@latest -path migrations -database "postgres://sakura:sakura@localhost:5432/sakura_dcim?sslmode=disable" up 2>nul
-cd ..
+cd /d "%ROOT%"
 
-if not exist "web\node_modules" (
+if not exist "%ROOT%\web\node_modules" (
     echo [4/5] Installing frontend dependencies...
-    cd web && call npm install && cd ..
+    cd /d "%ROOT%\web" && call npm install
+    cd /d "%ROOT%"
 ) else (
     echo [4/5] Frontend dependencies already installed.
 )
@@ -43,7 +45,7 @@ echo   Login: admin@sakura-dcim.local / admin123
 echo =========================================
 echo.
 
-start "Sakura Backend" cmd /c "cd /d "%~dp0..\backend" && go run ./cmd/server"
-start "Sakura Frontend" cmd /c "cd /d "%~dp0..\web" && npm run dev"
+start "Sakura Backend" cmd /k "cd /d %ROOT%\backend && go run ./cmd/server"
+start "Sakura Frontend" cmd /k "cd /d %ROOT%\web && npm run dev"
 
 echo Services started in separate windows. Close them to stop.
