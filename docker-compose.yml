@@ -83,7 +83,26 @@ services:
       - backend
     restart: unless-stopped
 
+  backup:
+    build:
+      context: ./docker/backup
+    container_name: sakura-backup
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: sakura
+      PGPASSWORD: sakura
+      PGDATABASE: sakura_dcim
+      RETENTION_DAYS: "30"
+    volumes:
+      - backup_data:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
   influxdb_data:
+  backup_data:

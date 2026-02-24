@@ -25,6 +25,8 @@ type TenantRepository interface {
 	GetBySlug(ctx context.Context, slug string) (*domain.Tenant, error)
 	GetByDomain(ctx context.Context, domain string) (*domain.Tenant, error)
 	List(ctx context.Context, parentID *uuid.UUID, page, pageSize int) (*domain.PaginatedResult[domain.Tenant], error)
+	ListChildren(ctx context.Context, parentID uuid.UUID) ([]domain.Tenant, error)
+	GetSubTree(ctx context.Context, rootID uuid.UUID) ([]domain.Tenant, error)
 	Update(ctx context.Context, tenant *domain.Tenant) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }

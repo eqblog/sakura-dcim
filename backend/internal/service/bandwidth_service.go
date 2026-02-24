@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"math"
 	"sort"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/sakura-dcim/sakura-dcim/backend/internal/domain"
+	influxRepo "github.com/sakura-dcim/sakura-dcim/backend/internal/repository/influxdb"
 	"github.com/sakura-dcim/sakura-dcim/backend/internal/repository"
 	ws "github.com/sakura-dcim/sakura-dcim/backend/internal/websocket"
 )
@@ -19,7 +21,8 @@ type BandwidthService struct {
 	portRepo   repository.SwitchPortRepository
 	hub        *ws.Hub
 	logger     *zap.Logger
-	// In-memory bandwidth data store (replace with InfluxDB when available)
+	influxRepo *influxRepo.BandwidthRepo
+	// In-memory fallback when InfluxDB is unavailable
 	dataStore map[string][]domain.BandwidthDataPoint
 }
 
@@ -33,11 +36,57 @@ func NewBandwidthService(switchRepo repository.SwitchRepository, portRepo reposi
 	}
 }
 
+func (s *BandwidthService) SetInfluxRepo(repo *influxRepo.BandwidthRepo) {
+	s.influxRepo = repo
+}
+
 // HandleSNMPDataEvent processes SNMP data events from agents.
 func (s *BandwidthService) HandleSNMPDataEvent(agentID uuid.UUID, msg *ws.Message) {
-	// Parse SNMP data and store
 	s.logger.Debug("received SNMP data", zap.String("agent_id", agentID.String()))
-	// TODO: write to InfluxDB when client is available
+
+	payloadBytes, err := json.Marshal(msg.Payload)
+	if err != nil {
+		return
+	}
+
+	var data struct {
+		SwitchID string `json:"switch_id"`
+		Ports    []struct {
+			PortID   string  `json:"port_id"`
+			InBytes  uint64  `json:"in_bytes"`
+			OutBytes uint64  `json:"out_bytes"`
+			InBps    float64 `json:"in_bps"`
+			OutBps   float64 `json:"out_bps"`
+		} `json:"ports"`
+	}
+	if err := json.Unmarshal(payloadBytes, &data); err != nil {
+		s.logger.Error("failed to parse SNMP data", zap.Error(err))
+		return
+	}
+
+	ctx := context.Background()
+	for _, port := range data.Ports {
+		dp := domain.BandwidthDataPoint{
+			Timestamp: time.Now(),
+			InBytes:   port.InBytes,
+			OutBytes:  port.OutBytes,
+			InBps:     port.InBps,
+			OutBps:    port.OutBps,
+		}
+
+		// Write to InfluxDB if available
+		if s.influxRepo != nil {
+			if err := s.influxRepo.WriteBandwidthPoint(ctx, port.PortID, data.SwitchID, port.InBytes, port.OutBytes, port.InBps, port.OutBps); err != nil {
+				s.logger.Error("failed to write bandwidth to InfluxDB", zap.Error(err))
+			}
+		}
+
+		// Also store in memory as fallback
+		s.dataStore[port.PortID] = append(s.dataStore[port.PortID], dp)
+		if len(s.dataStore[port.PortID]) > 8640 {
+			s.dataStore[port.PortID] = s.dataStore[port.PortID][len(s.dataStore[port.PortID])-8640:]
+		}
+	}
 }
 
 // GetServerBandwidth returns bandwidth data for a server's switch ports.
@@ -56,13 +105,30 @@ func (s *BandwidthService) GetServerBandwidth(ctx context.Context, serverID uuid
 			SpeedMbps: port.SpeedMbps,
 		}
 
-		key := port.ID.String()
-		if data, ok := s.dataStore[key]; ok && len(data) > 0 {
-			summary.DataPoints = filterByPeriod(data, period)
-			summary.In95th = calculate95thPercentile(summary.DataPoints, true)
-			summary.Out95th = calculate95thPercentile(summary.DataPoints, false)
-			summary.InAvg, summary.OutAvg = calculateAvg(summary.DataPoints)
-			summary.InMax, summary.OutMax = calculateMax(summary.DataPoints)
+		var data []domain.BandwidthDataPoint
+
+		// Try InfluxDB first
+		if s.influxRepo != nil {
+			start, stop := periodToTimeRange(period)
+			if influxData, err := s.influxRepo.QueryBandwidth(ctx, port.ID.String(), start, stop); err == nil && len(influxData) > 0 {
+				data = influxData
+			}
+		}
+
+		// Fall back to in-memory
+		if len(data) == 0 {
+			key := port.ID.String()
+			if memData, ok := s.dataStore[key]; ok && len(memData) > 0 {
+				data = filterByPeriod(memData, period)
+			}
+		}
+
+		if len(data) > 0 {
+			summary.DataPoints = data
+			summary.In95th = calculate95thPercentile(data, true)
+			summary.Out95th = calculate95thPercentile(data, false)
+			summary.InAvg, summary.OutAvg = calculateAvg(data)
+			summary.InMax, summary.OutMax = calculateMax(data)
 		}
 		summaries = append(summaries, summary)
 	}
@@ -86,23 +152,25 @@ func (s *BandwidthService) TriggerSNMPPoll(ctx context.Context, switchID uuid.UU
 	return err
 }
 
-func filterByPeriod(data []domain.BandwidthDataPoint, period string) []domain.BandwidthDataPoint {
-	var cutoff time.Time
+func periodToTimeRange(period string) (time.Time, time.Time) {
 	now := time.Now()
 	switch period {
 	case "hourly":
-		cutoff = now.Add(-24 * time.Hour)
+		return now.Add(-24 * time.Hour), now
 	case "daily":
-		cutoff = now.Add(-30 * 24 * time.Hour)
+		return now.Add(-30 * 24 * time.Hour), now
 	case "monthly":
-		cutoff = now.Add(-365 * 24 * time.Hour)
+		return now.Add(-365 * 24 * time.Hour), now
 	default:
-		cutoff = now.Add(-24 * time.Hour)
+		return now.Add(-24 * time.Hour), now
 	}
+}
 
+func filterByPeriod(data []domain.BandwidthDataPoint, period string) []domain.BandwidthDataPoint {
+	start, _ := periodToTimeRange(period)
 	var filtered []domain.BandwidthDataPoint
 	for _, dp := range data {
-		if dp.Timestamp.After(cutoff) {
+		if dp.Timestamp.After(start) {
 			filtered = append(filtered, dp)
 		}
 	}

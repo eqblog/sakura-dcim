@@ -12,6 +12,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/sakura-dcim/sakura-dcim/backend/internal/domain"
 	"github.com/sakura-dcim/sakura-dcim/backend/internal/handler"
 	"github.com/sakura-dcim/sakura-dcim/backend/internal/middleware"
+	influxRepo "github.com/sakura-dcim/sakura-dcim/backend/internal/repository/influxdb"
 	"github.com/sakura-dcim/sakura-dcim/backend/internal/repository/postgres"
 	"github.com/sakura-dcim/sakura-dcim/backend/internal/service"
 	ws "github.com/sakura-dcim/sakura-dcim/backend/internal/websocket"
@@ -53,6 +55,17 @@ func main() {
 		logger.Fatal("failed to connect to redis", zap.Error(err))
 	}
 	defer rdb.Close()
+
+	// InfluxDB (optional — fail-open if not configured)
+	var bandwidthInflux *influxRepo.BandwidthRepo
+	if cfg.InfluxDB.URL != "" && cfg.InfluxDB.Token != "" {
+		influxClient := influxRepo.NewClient(&cfg.InfluxDB)
+		bandwidthInflux = influxRepo.NewBandwidthRepo(influxClient, &cfg.InfluxDB)
+		defer bandwidthInflux.Close()
+		logger.Info("InfluxDB connected", zap.String("url", cfg.InfluxDB.URL))
+	} else {
+		logger.Warn("InfluxDB not configured — bandwidth data stored in-memory only")
+	}
 
 	// Repositories
 	userRepo := postgres.NewUserRepo(db)
@@ -93,6 +106,11 @@ func main() {
 	inventoryService := service.NewInventoryService(inventoryRepo, serverRepo, hub, logger)
 	ipService := service.NewIPService(ipPoolRepo, ipAddressRepo)
 
+	// Wire InfluxDB into bandwidth service
+	if bandwidthInflux != nil {
+		bandwidthService.SetInfluxRepo(bandwidthInflux)
+	}
+
 	// Register heartbeat event handler
 	hub.OnEvent(ws.ActionAgentHeartbeat, func(agentID uuid.UUID, msg *ws.Message) {
 		if err := agentService.UpdateLastSeen(context.Background(), agentID); err != nil {
@@ -114,6 +132,7 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(middleware.SecurityHeaders())
+	r.Use(middleware.PrometheusMetrics())
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -127,6 +146,9 @@ func main() {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "version": "0.1.0"})
 	})
+
+	// Prometheus metrics endpoint
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// API routes
 	api := r.Group("/api/v1")

@@ -116,3 +116,55 @@ func (s *TenantService) Update(ctx context.Context, id uuid.UUID, req *TenantUpd
 func (s *TenantService) Delete(ctx context.Context, id uuid.UUID) error {
 	return s.tenantRepo.Delete(ctx, id)
 }
+
+// ListChildren returns direct child tenants of a parent (reseller hierarchy).
+func (s *TenantService) ListChildren(ctx context.Context, parentID uuid.UUID) ([]domain.Tenant, error) {
+	return s.tenantRepo.ListChildren(ctx, parentID)
+}
+
+// GetSubTree returns the entire tenant tree rooted at the given tenant (recursive CTE).
+func (s *TenantService) GetSubTree(ctx context.Context, rootID uuid.UUID) ([]domain.Tenant, error) {
+	return s.tenantRepo.GetSubTree(ctx, rootID)
+}
+
+// TenantTree is a nested structure for reseller hierarchy display.
+type TenantTree struct {
+	domain.Tenant
+	Children []*TenantTree `json:"children,omitempty"`
+}
+
+// BuildTree converts a flat tenant list into a nested tree rooted at rootID.
+func BuildTree(flat []domain.Tenant, rootID uuid.UUID) *TenantTree {
+	byID := make(map[uuid.UUID]*TenantTree)
+	for _, t := range flat {
+		byID[t.ID] = &TenantTree{Tenant: t}
+	}
+
+	// Build parent→children links using pointers (order-independent)
+	for _, node := range byID {
+		if node.ParentID != nil {
+			if parent, ok := byID[*node.ParentID]; ok {
+				parent.Children = append(parent.Children, node)
+			}
+		}
+	}
+
+	return byID[rootID]
+}
+
+// GetHierarchy builds a nested tree from a flat list of tenants.
+func (s *TenantService) GetHierarchy(ctx context.Context, rootID uuid.UUID) (*TenantTree, error) {
+	flat, err := s.tenantRepo.GetSubTree(ctx, rootID)
+	if err != nil {
+		return nil, fmt.Errorf("get sub tree: %w", err)
+	}
+	if len(flat) == 0 {
+		return nil, fmt.Errorf("tenant not found")
+	}
+
+	root := BuildTree(flat, rootID)
+	if root == nil {
+		return nil, fmt.Errorf("root tenant not found in tree")
+	}
+	return root, nil
+}

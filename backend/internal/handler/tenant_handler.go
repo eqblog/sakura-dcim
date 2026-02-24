@@ -26,6 +26,8 @@ func (h *TenantHandler) RegisterRoutes(r *gin.RouterGroup) {
 		tenants.GET("/:id", h.Get)
 		tenants.PUT("/:id", h.Update)
 		tenants.DELETE("/:id", h.Delete)
+		tenants.GET("/:id/children", h.ListChildren)
+		tenants.GET("/:id/tree", h.GetHierarchy)
 	}
 }
 
@@ -102,6 +104,38 @@ func (h *TenantHandler) Update(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: tenant})
+}
+
+func (h *TenantHandler) ListChildren(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: "invalid tenant ID"})
+		return
+	}
+
+	children, err := h.tenantService.ListChildren(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: "failed to list children"})
+		return
+	}
+
+	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: children})
+}
+
+func (h *TenantHandler) GetHierarchy(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: "invalid tenant ID"})
+		return
+	}
+
+	tree, err := h.tenantService.GetHierarchy(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: "failed to get hierarchy"})
+		return
+	}
+
+	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: tree})
 }
 
 func (h *TenantHandler) Delete(c *gin.Context) {

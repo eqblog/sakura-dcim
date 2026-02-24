@@ -42,6 +42,8 @@ func main() {
 	raidExec := executor.NewRAIDExecutor(logger)
 	switchExec := executor.NewSwitchExecutor(logger)
 	snmpExec := executor.NewSNMPExecutor(logger)
+	solExec := executor.NewSOLExecutor(logger)
+	pxeInvExec := executor.NewPXEInventoryExecutor(logger, ipmiExec, pxeExec)
 
 	// Create WebSocket client
 	wsClient := client.NewWSClient(cfg, logger, map[string]client.ActionHandler{
@@ -51,7 +53,9 @@ func main() {
 		"ipmi.power.cycle":  ipmiExec.HandlePowerCycle,
 		"ipmi.power.status": ipmiExec.HandlePowerStatus,
 		"ipmi.sensors":      ipmiExec.HandleSensors,
+		"ipmi.sol":          solExec.HandleSOL,
 		"inventory.scan":    inventoryExec.HandleScan,
+		"inventory.pxe":     pxeInvExec.HandlePXEInventory,
 		"ipmi.kvm.start":    kvmExec.HandleKVMStart,
 		"ipmi.kvm.stop":     kvmExec.HandleKVMStop,
 		"pxe.prepare":       pxeExec.HandlePXEPrepare,
@@ -62,6 +66,16 @@ func main() {
 		"switch.status":     switchExec.HandleSwitchStatus,
 		"snmp.poll":         snmpExec.HandleSNMPPoll,
 	})
+
+	// Config hot-reload watcher
+	cfgWatcher := config.NewWatcher(*configPath, cfg, logger)
+	cfgWatcher.OnChange(func(newCfg *config.Config) {
+		logger.Info("config reloaded",
+			zap.String("server_url", newCfg.ServerURL),
+			zap.String("agent_id", newCfg.AgentID),
+		)
+	})
+	go cfgWatcher.Watch()
 
 	// Connect
 	go wsClient.ConnectWithRetry()

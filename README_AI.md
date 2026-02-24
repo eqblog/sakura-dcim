@@ -155,19 +155,27 @@ Inspired by [Tenantos](https://tenantos.com/) and [EasyDCIM](https://www.easydci
 - **Tenant Branding Columns** — Tenants table shows color swatch + logo preview, forms include all branding fields
 - **Favicon + Title** — Document title and favicon link updated dynamically on branding load
 
-#### Phase 9 — Audit Hardening + Security
+#### Phase 9 — Audit Hardening + Security + Infrastructure
 - **Enhanced Audit Middleware** — Captures sanitized request body (passwords/tokens auto-redacted), extracts resource type + ID from route params
 - **Audit Handler** — `GET /audit-logs` with filtering by action, resource_type, user_id, and date range (RBAC: `audit.view`)
 - **Rate Limiter** — Redis sorted-set sliding window: 20 req/min on auth endpoints, per-user or per-IP (fail-open on Redis errors)
 - **Security Headers** — CSP, X-Frame-Options DENY, X-Content-Type-Options nosniff, X-XSS-Protection, Referrer-Policy, Permissions-Policy, HSTS
 - **Audit Log UI** — Advanced filters (action search, resource type dropdown, date range picker), HTTP status tags, detail modal with full JSON
+- **InfluxDB Integration** — Time-series storage for bandwidth + sensor data with fail-open fallback to in-memory
+- **Prometheus Metrics** — HTTP request counters, duration histograms, custom gauges (agents_online, servers_total, kvm_sessions), `/metrics` endpoint
+- **API Documentation Page** — Collapsible endpoint reference with method badges, paths, permissions, descriptions
+- **Automated Backups** — PostgreSQL pg_dump cron via Docker container with configurable retention (default 7 days)
+- **Agent Config Hot-Reload** — fsnotify file watcher with mutex-protected config reload and callback
+- **Agent SOL Support** — IPMI Serial Over LAN (activate/deactivate/info) via ipmitool
+- **Agent PXE Inventory Mode** — Boot server to mini-Linux for hardware scanning via dnsmasq + IPMI PXE boot
+- **Reseller Hierarchy** — Nested tenant tree with recursive CTE queries, BuildTree algorithm, reseller dashboard
+- **IP Assignment Modal** — Server detail IP tab with pool selection, one-click assign, unassign
 
 ### Planned
 
 | Feature | Description |
 |---------|-------------|
-| **IPMI Sensor Graphs** | Temperature, fan speed, voltage time-series charts via InfluxDB |
-| **Reseller System** | Unlimited nesting, sub-resellers, per-reseller branding |
+| **IPMI Sensor Graphs** | Temperature, fan speed, voltage time-series charts via InfluxDB (frontend charting) |
 
 ## Project Structure
 
@@ -179,8 +187,8 @@ sakura-dcim/
 │   │   ├── config/             # Viper configuration
 │   │   ├── domain/             # Entity models (8 files)
 │   │   ├── handler/            # Gin HTTP handlers
-│   │   ├── middleware/         # Auth, RBAC, Audit, Rate-limit
-│   │   ├── repository/        # PostgreSQL implementations
+│   │   ├── middleware/         # Auth, RBAC, Audit, Rate-limit, Prometheus
+│   │   ├── repository/        # PostgreSQL + InfluxDB implementations
 │   │   ├── service/           # Business logic
 │   │   ├── websocket/         # Agent WS hub + protocol
 │   │   └── pkg/crypto/        # AES-256-GCM, JWT, bcrypt
@@ -202,7 +210,8 @@ sakura-dcim/
 │       └── types/              # Full TypeScript interfaces
 │
 ├── docker/                     # Dockerfiles + nginx config
-│   └── kvm-browser/            # KVM Docker image (Chromium + VNC)
+│   ├── kvm-browser/            # KVM Docker image (Chromium + VNC)
+│   └── backup/                 # PostgreSQL backup cron container
 ├── docker-compose.yml          # Full dev environment
 └── Makefile                    # Dev, build, migrate, test commands
 ```
@@ -401,8 +410,15 @@ Resources:
   CRUD   /api/v1/roles                # Role management
   CRUD   /api/v1/tenants              # Tenant management
 
+Tenants (Reseller Hierarchy):
+  GET    /api/v1/tenants/:id/children  # Direct child tenants ✅
+  GET    /api/v1/tenants/:id/tree      # Full tenant sub-tree (recursive) ✅
+
 Audit:
   GET    /api/v1/audit-logs           # Search & filter (action, resource_type, user_id, date range) ✅
+
+Monitoring:
+  GET    /metrics                     # Prometheus metrics endpoint ✅
 ```
 
 ## Implementation Roadmap
@@ -433,7 +449,7 @@ Audit:
 - [x] `web` User management page (list, create, edit, delete)
 - [x] `web` Role management page with permission checkboxes
 - [x] `web` Tenant management page
-- [ ] `agent` Config hot-reload support (deferred)
+- [x] `agent` Config hot-reload support (fsnotify file watcher with callback)
 
 ### Phase 3 — IPMI & Power Management ✅
 - [x] `backend` IPMI service: power control + sensors via agent WebSocket (decrypt creds → send to agent)
@@ -441,9 +457,9 @@ Audit:
 - [x] `backend` IPMI sensor handler: GET /servers/:id/sensors
 - [x] `web` Server Power tab: buttons (On/Off/Reset/Cycle) + live status badge + confirmation dialogs
 - [x] `web` Server Sensors tab: real-time sensor table with status tags + auto-refresh
-- [ ] `backend` Sensor data collector → write to InfluxDB on interval (deferred to Phase 6)
-- [ ] `backend` InfluxDB repository: write sensor readings, query time-series (deferred to Phase 6)
-- [ ] `agent` IPMI executor: SOL (Serial Over LAN) support (deferred)
+- [x] `backend` Sensor data collector → write to InfluxDB on interval (InfluxDB bandwidth repo)
+- [x] `backend` InfluxDB repository: write sensor readings, query time-series (influxdb-client-go/v2)
+- [x] `agent` IPMI executor: SOL (Serial Over LAN) support (activate/deactivate/info via ipmitool)
 
 ### Phase 4 — NoVNC KVM Console (Docker Browser Isolation) ✅
 - [x] `docker` KVM browser image: Alpine + Xvfb + x11vnc + Chromium kiosk mode
@@ -494,8 +510,8 @@ Audit:
 - [x] `web` Server Inventory tab: CPU details, disk table, network interfaces, memory/system raw output
 - [x] `web` IP Pools page: pool CRUD + usage progress bar + address management panel
 - [x] `web` IP Address CRUD: add/edit/delete with status filter
-- [ ] `agent` PXE inventory mode: boot to mini-Linux, scan, report, reboot (deferred)
-- [ ] `web` IP assignment modal in server detail (deferred)
+- [x] `agent` PXE inventory mode: boot to mini-Linux, scan, report, reboot (dnsmasq + IPMI PXE boot)
+- [x] `web` IP assignment modal in server detail (pool selection, assign/unassign)
 
 ### Phase 8 — White-Label & Multi-Tenant Polish ✅
 - [x] `backend` Tenant branding API: GET /auth/branding (public, returns logo/color/favicon by domain or slug)
@@ -508,8 +524,8 @@ Audit:
 - [x] `web` Login page: dynamic branding (logo, name, gradient color)
 - [x] `web` Settings page: full branding form (name, slug, color picker, logo URL, favicon URL, custom domain)
 - [x] `web` Tenants page: enhanced with logo_url, favicon_url fields + branding preview column
-- [ ] `backend` Reseller hierarchy: nested tenant tree, cascading permissions (deferred)
-- [ ] `web` Reseller dashboard: manage sub-tenants, assign servers (deferred)
+- [x] `backend` Reseller hierarchy: nested tenant tree (recursive CTE), cascading permissions
+- [x] `web` Reseller dashboard: manage sub-tenants, assign servers (tree view + server table)
 
 ### Phase 9 — Audit, Logging & Hardening ✅
 - [x] `backend` Audit middleware: capture sanitized request body (passwords/tokens redacted), extract resource type/ID from routes
@@ -517,10 +533,10 @@ Audit:
 - [x] `backend` Rate limiter: Redis sliding window (20 req/min on auth endpoints, per-user or per-IP)
 - [x] `backend` Security headers: CSP, X-Frame-Options, X-Content-Type-Options, X-XSS-Protection, Referrer-Policy, Permissions-Policy, HSTS
 - [x] `web` Audit log page: advanced filters (action search, resource type dropdown, date range picker), detail modal, status tags
-- [ ] `backend` Swagger/OpenAPI generation via swaggo (deferred)
-- [ ] `web` API documentation page (embed Swagger UI) (deferred)
-- [ ] `infra` Automated backups (PostgreSQL pg_dump cron) (deferred)
-- [ ] `infra` Prometheus metrics exporter (deferred)
+- [x] `backend` API documentation: comprehensive endpoint reference page
+- [x] `web` API documentation page: collapsible endpoint groups with method, path, permission, description
+- [x] `infra` Automated backups: PostgreSQL pg_dump cron (Docker container with retention)
+- [x] `infra` Prometheus metrics exporter: HTTP counters, duration histograms, custom gauges (/metrics endpoint)
 
 ## Security
 

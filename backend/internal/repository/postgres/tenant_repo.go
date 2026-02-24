@@ -139,6 +139,54 @@ func (r *TenantRepo) List(ctx context.Context, parentID *uuid.UUID, page, pageSi
 	}, nil
 }
 
+func (r *TenantRepo) ListChildren(ctx context.Context, parentID uuid.UUID) ([]domain.Tenant, error) {
+	query := `SELECT id, parent_id, name, slug, custom_domain, logo_url, primary_color, favicon_url, created_at, updated_at
+		FROM tenants WHERE parent_id = $1 ORDER BY name`
+
+	rows, err := r.db.Query(ctx, query, parentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Tenant, error) {
+		var t domain.Tenant
+		err := row.Scan(
+			&t.ID, &t.ParentID, &t.Name, &t.Slug,
+			&t.CustomDomain, &t.LogoURL, &t.PrimaryColor, &t.FaviconURL,
+			&t.CreatedAt, &t.UpdatedAt,
+		)
+		return t, err
+	})
+}
+
+func (r *TenantRepo) GetSubTree(ctx context.Context, rootID uuid.UUID) ([]domain.Tenant, error) {
+	query := `WITH RECURSIVE subtree AS (
+		SELECT id, parent_id, name, slug, custom_domain, logo_url, primary_color, favicon_url, created_at, updated_at
+		FROM tenants WHERE id = $1
+		UNION ALL
+		SELECT t.id, t.parent_id, t.name, t.slug, t.custom_domain, t.logo_url, t.primary_color, t.favicon_url, t.created_at, t.updated_at
+		FROM tenants t INNER JOIN subtree s ON t.parent_id = s.id
+	)
+	SELECT * FROM subtree ORDER BY name`
+
+	rows, err := r.db.Query(ctx, query, rootID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Tenant, error) {
+		var t domain.Tenant
+		err := row.Scan(
+			&t.ID, &t.ParentID, &t.Name, &t.Slug,
+			&t.CustomDomain, &t.LogoURL, &t.PrimaryColor, &t.FaviconURL,
+			&t.CreatedAt, &t.UpdatedAt,
+		)
+		return t, err
+	})
+}
+
 func (r *TenantRepo) Update(ctx context.Context, tenant *domain.Tenant) error {
 	now := time.Now()
 	query := `UPDATE tenants SET name = $2, slug = $3, custom_domain = $4, logo_url = $5, primary_color = $6, favicon_url = $7, updated_at = $8

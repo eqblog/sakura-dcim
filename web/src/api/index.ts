@@ -124,6 +124,10 @@ export const tenantAPI = {
     client.delete<APIResponse>(`/tenants/${id}`),
   settings: (id: string) =>
     client.get<APIResponse>(`/tenants/${id}/settings`),
+  children: (id: string) =>
+    client.get<APIResponse<Tenant[]>>(`/tenants/${id}/children`),
+  tree: (id: string) =>
+    client.get<APIResponse>(`/tenants/${id}/tree`),
 };
 
 // OS Profiles

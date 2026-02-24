@@ -11,6 +11,7 @@ import ReinstallTab from './tabs/ReinstallTab';
 import SensorsTab from './tabs/SensorsTab';
 import BandwidthTab from './tabs/BandwidthTab';
 import InventoryTab from './tabs/InventoryTab';
+import IPTab from './tabs/IPTab';
 
 const { Title } = Typography;
 
@@ -87,6 +88,7 @@ const ServerDetailPage: React.FC = () => {
     { key: 'reinstall', label: 'Reinstall', children: <ReinstallTab serverId={server.id} /> },
     { key: 'bandwidth', label: 'Bandwidth', children: <BandwidthTab serverId={server.id} /> },
     { key: 'inventory', label: 'Inventory', children: <InventoryTab serverId={server.id} /> },
+    { key: 'ips', label: 'IP Addresses', children: <IPTab serverId={server.id} /> },
   ];
 
   return (

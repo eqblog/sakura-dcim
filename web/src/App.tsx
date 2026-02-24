@@ -22,6 +22,8 @@ import AuditLogPage from './pages/AuditLog';
 import SettingsPage from './pages/Settings';
 import IPManagementPage from './pages/IPManagement';
 import RolesPage from './pages/Roles';
+import ResellerDashboard from './pages/ResellerDashboard';
+import APIDocsPage from './pages/APIDocs';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuthStore();
@@ -82,6 +84,8 @@ const App: React.FC = () => {
               <Route path="roles" element={<RolesPage />} />
               <Route path="tenants" element={<TenantsPage />} />
               <Route path="audit-log" element={<AuditLogPage />} />
+              <Route path="reseller" element={<ResellerDashboard />} />
+              <Route path="api-docs" element={<APIDocsPage />} />
               <Route path="settings" element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

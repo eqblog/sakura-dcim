@@ -75,6 +75,15 @@ type IPAddressUpdateRequest struct {
 	Note     *string    `json:"note"`
 }
 
+// SensorDataPoint represents a time-series sensor reading stored in InfluxDB
+type SensorDataPoint struct {
+	Timestamp  time.Time `json:"timestamp"`
+	SensorName string    `json:"sensor_name"`
+	SensorType string    `json:"sensor_type"`
+	Value      float64   `json:"value"`
+	Status     string    `json:"status"`
+}
+
 // BandwidthDataPoint represents a single bandwidth measurement
 type BandwidthDataPoint struct {
 	Timestamp time.Time `json:"timestamp"`

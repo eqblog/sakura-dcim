@@ -24,6 +24,8 @@ import {
   UserOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  ApartmentOutlined,
+  BookOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useAuthStore } from '../../store/auth';
@@ -92,9 +94,19 @@ const menuItems: MenuProps['items'] = [
     label: 'Tenants',
   },
   {
+    key: '/reseller',
+    icon: <ApartmentOutlined />,
+    label: 'Reseller',
+  },
+  {
     key: '/audit-log',
     icon: <AuditOutlined />,
     label: 'Audit Log',
+  },
+  {
+    key: '/api-docs',
+    icon: <BookOutlined />,
+    label: 'API Docs',
   },
   {
     key: '/settings',
