@@ -92,6 +92,8 @@ const TenantsPage: React.FC = () => {
       name: tenant.name,
       slug: tenant.slug,
       custom_domain: tenant.custom_domain || '',
+      logo_url: tenant.logo_url || '',
+      favicon_url: tenant.favicon_url || '',
       primary_color: tenant.primary_color || undefined,
     });
     setEditModalOpen(true);
@@ -150,6 +152,19 @@ const TenantsPage: React.FC = () => {
       dataIndex: 'slug',
       key: 'slug',
       render: (slug: string) => <code>{slug}</code>,
+    },
+    {
+      title: 'Branding',
+      key: 'branding',
+      width: 100,
+      render: (_, record) => (
+        <Space size={4}>
+          {record.primary_color && (
+            <div style={{ width: 16, height: 16, borderRadius: 4, background: record.primary_color, border: '1px solid #d9d9d9' }} />
+          )}
+          {record.logo_url && <img src={record.logo_url} alt="" style={{ height: 16 }} />}
+        </Space>
+      ),
     },
     {
       title: 'Custom Domain',
@@ -218,6 +233,12 @@ const TenantsPage: React.FC = () => {
       </Form.Item>
       <Form.Item name="primary_color" label="Primary Color">
         <ColorPicker format="hex" showText />
+      </Form.Item>
+      <Form.Item name="logo_url" label="Logo URL">
+        <Input placeholder="https://example.com/logo.png" />
+      </Form.Item>
+      <Form.Item name="favicon_url" label="Favicon URL">
+        <Input placeholder="https://example.com/favicon.ico" />
       </Form.Item>
     </>
   );

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, Form, Input, Button, Typography, message, Space } from 'antd';
 import { CloudServerOutlined, LockOutlined, MailOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth';
+import { useBrandingStore } from '../../store/branding';
 
 const { Title, Text } = Typography;
 
@@ -10,6 +11,8 @@ const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuthStore();
+  const { branding } = useBrandingStore();
+  const primaryColor = branding.primary_color || '#667eea';
 
   const onFinish = async (values: { email: string; password: string }) => {
     setLoading(true);
@@ -31,7 +34,7 @@ const LoginPage: React.FC = () => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        background: `linear-gradient(135deg, ${primaryColor} 0%, #764ba2 100%)`,
       }}
     >
       <Card
@@ -42,9 +45,13 @@ const LoginPage: React.FC = () => {
         }}
       >
         <Space direction="vertical" align="center" style={{ width: '100%', marginBottom: 32 }}>
-          <CloudServerOutlined style={{ fontSize: 48, color: '#667eea' }} />
+          {branding.logo_url ? (
+            <img src={branding.logo_url} alt={branding.name} style={{ height: 48, objectFit: 'contain' }} />
+          ) : (
+            <CloudServerOutlined style={{ fontSize: 48, color: primaryColor }} />
+          )}
           <Title level={3} style={{ margin: 0 }}>
-            Sakura DCIM
+            {branding.name || 'Sakura DCIM'}
           </Title>
           <Text type="secondary">Data Center Infrastructure Management</Text>
         </Space>

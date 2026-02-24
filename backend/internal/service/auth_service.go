@@ -19,16 +19,18 @@ var (
 )
 
 type AuthService struct {
-	userRepo repository.UserRepository
-	roleRepo repository.RoleRepository
-	cfg      *config.Config
+	userRepo   repository.UserRepository
+	roleRepo   repository.RoleRepository
+	tenantRepo repository.TenantRepository
+	cfg        *config.Config
 }
 
-func NewAuthService(userRepo repository.UserRepository, roleRepo repository.RoleRepository, cfg *config.Config) *AuthService {
+func NewAuthService(userRepo repository.UserRepository, roleRepo repository.RoleRepository, tenantRepo repository.TenantRepository, cfg *config.Config) *AuthService {
 	return &AuthService{
-		userRepo: userRepo,
-		roleRepo: roleRepo,
-		cfg:      cfg,
+		userRepo:   userRepo,
+		roleRepo:   roleRepo,
+		tenantRepo: tenantRepo,
+		cfg:        cfg,
 	}
 }
 
@@ -82,6 +84,12 @@ func (s *AuthService) Login(ctx context.Context, req *domain.UserLoginRequest) (
 	}
 
 	_ = s.userRepo.UpdateLastLogin(ctx, user.ID)
+
+	// Populate tenant branding
+	tenant, tErr := s.tenantRepo.GetByID(ctx, user.TenantID)
+	if tErr == nil {
+		user.Tenant = tenant
+	}
 
 	return &LoginResponse{
 		AccessToken:  accessToken,
@@ -155,5 +163,24 @@ func (s *AuthService) GetCurrentUser(ctx context.Context, userID uuid.UUID) (*do
 		}
 	}
 
+	// Populate tenant branding info
+	tenant, err := s.tenantRepo.GetByID(ctx, user.TenantID)
+	if err == nil {
+		user.Tenant = tenant
+	}
+
 	return user, nil
+}
+
+// GetTenantBranding returns public branding info for a tenant (by domain or slug).
+func (s *AuthService) GetTenantBranding(ctx context.Context, host string) (*domain.Tenant, error) {
+	tenant, err := s.tenantRepo.GetByDomain(ctx, host)
+	if err != nil {
+		// Fallback: try as slug
+		tenant, err = s.tenantRepo.GetBySlug(ctx, host)
+		if err != nil {
+			return nil, fmt.Errorf("tenant not found for host: %s", host)
+		}
+	}
+	return tenant, nil
 }

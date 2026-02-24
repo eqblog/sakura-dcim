@@ -146,12 +146,20 @@ Inspired by [Tenantos](https://tenantos.com/) and [EasyDCIM](https://www.easydci
 - **Backend Services** — InventoryService (scan via agent, store results), IPService (pool/address CRUD, auto-assign)
 - **RBAC Protected** — `inventory.view`, `inventory.scan`, `ip.manage` permissions
 
+#### Phase 8 — White-Label + Multi-Tenant Polish
+- **Public Branding API** — `GET /auth/branding` resolves domain/slug → tenant branding (logo, color, favicon)
+- **Dynamic Theme** — Ant Design ConfigProvider driven by tenant `primary_color` from Zustand branding store
+- **Login Branding** — Login page displays tenant logo, name, and gradient from branding config
+- **AppLayout Branding** — Sidebar logo + org name dynamically sourced from branding store
+- **Settings Page** — Full white-label config: org name, slug, color picker, logo URL, favicon URL, custom domain
+- **Tenant Branding Columns** — Tenants table shows color swatch + logo preview, forms include all branding fields
+- **Favicon + Title** — Document title and favicon link updated dynamically on branding load
+
 ### Planned
 
 | Feature | Description |
 |---------|-------------|
 | **IPMI Sensor Graphs** | Temperature, fan speed, voltage time-series charts via InfluxDB |
-| **White-Label** | Custom domain, logo, colors, favicon per tenant |
 | **Reseller System** | Unlimited nesting, sub-resellers, per-reseller branding |
 
 ## Project Structure
@@ -183,7 +191,7 @@ sakura-dcim/
 │       ├── api/                # Axios client + all API endpoints
 │       ├── components/Layout/  # App shell with sidebar
 │       ├── pages/              # 12 pages (Dashboard, Servers, Agents, ...)
-│       ├── store/              # Zustand auth store
+│       ├── store/              # Zustand stores (auth, branding)
 │       └── types/              # Full TypeScript interfaces
 │
 ├── docker/                     # Dockerfiles + nginx config
@@ -341,8 +349,9 @@ cd agent && go run ./cmd/agent
 Auth:
   POST   /api/v1/auth/login          # Login
   POST   /api/v1/auth/refresh        # Refresh token
-  GET    /api/v1/auth/me             # Current user
+  GET    /api/v1/auth/me             # Current user (includes tenant branding)
   POST   /api/v1/auth/logout         # Logout
+  GET    /api/v1/auth/branding       # Public tenant branding (by domain/slug) ✅
 
 Servers:
   GET    /api/v1/servers              # List (search, filter, paginate)
@@ -400,8 +409,8 @@ Audit:
 | 5 | PXE OS Reinstall + Auto RAID + Scripts | ✅ Done |
 | 6 | Switch Automation + Bandwidth Monitoring | ✅ Done |
 | 7 | Hardware Inventory + IP Management | ✅ Done |
-| 8 | White-Label + Multi-Tenant Polish | 🔲 Next |
-| 9 | Audit Hardening + API Docs + Security | 🔲 |
+| 8 | White-Label + Multi-Tenant Polish | ✅ Done |
+| 9 | Audit Hardening + API Docs + Security | 🔲 Next |
 
 ## Detailed TODO
 
@@ -481,15 +490,19 @@ Audit:
 - [ ] `agent` PXE inventory mode: boot to mini-Linux, scan, report, reboot (deferred)
 - [ ] `web` IP assignment modal in server detail (deferred)
 
-### Phase 8 — White-Label & Multi-Tenant Polish
-- [ ] `backend` Tenant settings API: logo, colors, favicon, custom domain
-- [ ] `backend` Custom domain middleware: resolve domain → tenant
-- [ ] `backend` Reseller hierarchy: nested tenant tree, cascading permissions
-- [ ] `backend` Tenant-scoped statistics API
-- [ ] `web` Dynamic theme: load tenant branding on login (CSS variables)
-- [ ] `web` Tenant settings page: upload logo, pick colors, set domain
-- [ ] `web` Reseller dashboard: manage sub-tenants, assign servers
-- [ ] `web` Hide branding completely (no "Sakura DCIM" references in white-label mode)
+### Phase 8 — White-Label & Multi-Tenant Polish ✅
+- [x] `backend` Tenant branding API: GET /auth/branding (public, returns logo/color/favicon by domain or slug)
+- [x] `backend` AuthService: populate tenant branding on login and /auth/me
+- [x] `backend` Custom domain resolution: branding endpoint resolves Host header → tenant
+- [x] `backend` Tenant CRUD: already includes logo_url, primary_color, favicon_url, custom_domain fields
+- [x] `web` Branding store (Zustand): fetchBranding on app load, dynamic favicon + document title
+- [x] `web` Dynamic theme: ConfigProvider uses tenant primary_color from branding store
+- [x] `web` AppLayout: dynamic logo (image or icon) + dynamic org name from branding
+- [x] `web` Login page: dynamic branding (logo, name, gradient color)
+- [x] `web` Settings page: full branding form (name, slug, color picker, logo URL, favicon URL, custom domain)
+- [x] `web` Tenants page: enhanced with logo_url, favicon_url fields + branding preview column
+- [ ] `backend` Reseller hierarchy: nested tenant tree, cascading permissions (deferred)
+- [ ] `web` Reseller dashboard: manage sub-tenants, assign servers (deferred)
 
 ### Phase 9 — Audit, Logging & Hardening
 - [ ] `backend` Audit middleware: capture request body (sanitize passwords)

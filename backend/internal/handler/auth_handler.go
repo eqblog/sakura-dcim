@@ -22,6 +22,7 @@ func (h *AuthHandler) RegisterRoutes(r *gin.RouterGroup) {
 	{
 		auth.POST("/login", h.Login)
 		auth.POST("/refresh", h.RefreshToken)
+		auth.GET("/branding", h.GetBranding)
 	}
 }
 
@@ -114,4 +115,31 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	// JWT is stateless; client should discard the token
 	// In a future iteration, we could add token blacklisting via Redis
 	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Message: "logged out"})
+}
+
+// GetBranding returns public tenant branding based on Host header or slug query param.
+func (h *AuthHandler) GetBranding(c *gin.Context) {
+	host := c.Query("domain")
+	if host == "" {
+		host = c.Request.Host
+	}
+
+	tenant, err := h.authService.GetTenantBranding(c.Request.Context(), host)
+	if err != nil {
+		// Return default branding (no custom branding)
+		c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: map[string]any{
+			"name":          "Sakura DCIM",
+			"primary_color": "#667eea",
+		}})
+		return
+	}
+
+	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: map[string]any{
+		"id":            tenant.ID,
+		"name":          tenant.Name,
+		"slug":          tenant.Slug,
+		"logo_url":      tenant.LogoURL,
+		"primary_color": tenant.PrimaryColor,
+		"favicon_url":   tenant.FaviconURL,
+	}})
 }

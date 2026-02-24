@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider, App as AntdApp, theme } from 'antd';
 import { useAuthStore } from './store/auth';
+import { useBrandingStore } from './store/branding';
 import AppLayout from './components/Layout/AppLayout';
 import LoginPage from './pages/Login';
 import DashboardPage from './pages/Dashboard';
@@ -30,6 +31,11 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 
 const App: React.FC = () => {
   const { isAuthenticated, fetchUser } = useAuthStore();
+  const { branding, fetchBranding } = useBrandingStore();
+
+  useEffect(() => {
+    fetchBranding();
+  }, [fetchBranding]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -42,7 +48,7 @@ const App: React.FC = () => {
       theme={{
         algorithm: theme.defaultAlgorithm,
         token: {
-          colorPrimary: '#667eea',
+          colorPrimary: branding.primary_color || '#667eea',
           borderRadius: 6,
         },
       }}

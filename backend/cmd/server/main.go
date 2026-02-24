@@ -76,7 +76,7 @@ func main() {
 	go hub.Run()
 
 	// Services
-	authService := service.NewAuthService(userRepo, roleRepo, cfg)
+	authService := service.NewAuthService(userRepo, roleRepo, tenantRepo, cfg)
 	serverService := service.NewServerService(serverRepo, cfg)
 	agentService := service.NewAgentService(agentRepo)
 	userService := service.NewUserService(userRepo, roleRepo)

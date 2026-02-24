@@ -27,6 +27,7 @@ import {
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useAuthStore } from '../../store/auth';
+import { useBrandingStore } from '../../store/branding';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -107,6 +108,7 @@ const AppLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
+  const { branding } = useBrandingStore();
   const { token } = theme.useToken();
 
   const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
@@ -164,10 +166,14 @@ const AppLayout: React.FC = () => {
             borderBottom: `1px solid ${token.colorBorderSecondary}`,
           }}
         >
-          <CloudServerOutlined style={{ fontSize: 24, color: token.colorPrimary }} />
+          {branding.logo_url ? (
+            <img src={branding.logo_url} alt={branding.name} style={{ height: 28, objectFit: 'contain' }} />
+          ) : (
+            <CloudServerOutlined style={{ fontSize: 24, color: token.colorPrimary }} />
+          )}
           {!collapsed && (
             <Text strong style={{ marginLeft: 12, fontSize: 18 }}>
-              Sakura DCIM
+              {branding.name || 'Sakura DCIM'}
             </Text>
           )}
         </div>
