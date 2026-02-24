@@ -24,6 +24,10 @@ func NewServerService(serverRepo repository.ServerRepository, cfg *config.Config
 }
 
 func (s *ServerService) Create(ctx context.Context, tenantID uuid.UUID, req *domain.ServerCreateRequest) (*domain.Server, error) {
+	tags := req.Tags
+	if tags == nil {
+		tags = []string{}
+	}
 	server := &domain.Server{
 		ID:        uuid.New(),
 		TenantID:  &tenantID,
@@ -32,7 +36,7 @@ func (s *ServerService) Create(ctx context.Context, tenantID uuid.UUID, req *dom
 		Label:     req.Label,
 		Status:    domain.ServerStatusActive,
 		PrimaryIP: req.PrimaryIP,
-		Tags:      req.Tags,
+		Tags:      tags,
 		Notes:     req.Notes,
 	}
 
