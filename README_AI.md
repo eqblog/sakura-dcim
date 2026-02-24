@@ -285,8 +285,8 @@ Audit:
 | Phase | Scope | Status |
 |-------|-------|--------|
 | 1 | Foundation — Auth, RBAC, DB, Layout, Docker | ✅ Done |
-| 2 | Server CRUD + Agent WebSocket wiring | 🔲 Next |
-| 3 | IPMI Power Control + Sensor Monitoring | 🔲 |
+| 2 | Server CRUD + Agent WebSocket wiring | ✅ Done |
+| 3 | IPMI Power Control + Sensor Monitoring | 🔲 Next |
 | 4 | NoVNC KVM Console | 🔲 |
 | 5 | PXE OS Reinstall + Auto RAID + Scripts | 🔲 |
 | 6 | SNMP Bandwidth Monitoring + Charts | 🔲 |
@@ -296,19 +296,19 @@ Audit:
 
 ## Detailed TODO
 
-### Phase 2 — Server & Agent Management
-- [ ] `backend` Agent CRUD handler + service (POST/GET/PUT/DELETE /agents)
-- [ ] `backend` Agent WebSocket heartbeat → update last_seen + status in DB
-- [ ] `backend` Agent event router (dispatch PXE status, SNMP data to services)
-- [ ] `backend` Tenant CRUD handler + service
-- [ ] `backend` User CRUD handler + service (with password hashing)
-- [ ] `backend` Role CRUD handler + service
-- [ ] `web` Server detail page with tabs (Overview / Power / KVM / Reinstall / Bandwidth / Inventory)
-- [ ] `web` Agent detail page with live status + capabilities
-- [ ] `web` User management page (list, create, edit, delete)
-- [ ] `web` Role management page with permission checkboxes
-- [ ] `web` Tenant management page
-- [ ] `agent` Config hot-reload support
+### Phase 2 — Server & Agent Management ✅
+- [x] `backend` Agent CRUD handler + service (POST/GET/PUT/DELETE /agents)
+- [x] `backend` Agent WebSocket heartbeat → update last_seen + status in DB
+- [x] `backend` Agent event router (dispatch PXE status, SNMP data to services)
+- [x] `backend` Tenant CRUD handler + service
+- [x] `backend` User CRUD handler + service (with password hashing)
+- [x] `backend` Role CRUD handler + service
+- [x] `web` Server detail page with tabs (Overview / Power / KVM / Reinstall / Bandwidth / Inventory)
+- [x] `web` Agent detail page with live status + capabilities
+- [x] `web` User management page (list, create, edit, delete)
+- [x] `web` Role management page with permission checkboxes
+- [x] `web` Tenant management page
+- [ ] `agent` Config hot-reload support (deferred)
 
 ### Phase 3 — IPMI & Power Management
 - [ ] `backend` IPMI service: power control via agent WebSocket (decrypt creds → send to agent)
@@ -425,7 +425,7 @@ Private — All rights reserved.
 
 ### 必须遵守
 1. **先读后改**: 修改文件前必须先 Read
-2. **每步验证编译**: 后端 需要先设置环境变量 如windows “ $env:JWT_SECRET = "Q5GOlhae8Xi0qyeTS9ue5HLOSW+P+0QJHJBxIjOVxO3tFhYCn244JvwDx3TEVjT2"“ `go build ./...`，前端 `npx next build`
+2. **每步验证编译**
 3. **不破坏兼容**: 所有现有 import 必须继续工作 (用 barrel re-export)
 4. **单模块迭代**: 完成一个文件的重构再进行下一个
 5. **JSON snake_case**: 后端 API 响应使用 snake_case 字段名
@@ -435,9 +435,10 @@ Private — All rights reserved.
 9. **加强联系上下文** 必须要理解整个项目，如果没有记忆请读取整个项目并理解
 10. **每次打开新的session请必须阅读本文档AI_RULE.md**
 11. **请每次增加功能后，确认功能可用后进行git commit 自动总结 生成commit提交**
+12. **数据库迁移请实现版本控制**
 
 ### 禁止事项
-- 禁止在组件中 hardcode 颜色/间距，必须用 CSS 变量或 Tailwind 语义类
+- 禁止在组件中 hardcode 颜色/间距，必须用 CSS 变量或 Ant Design 5 语义类
 - 禁止在 handler 中写业务逻辑或 SQL
 - 禁止跳过 service 层直接调 repository
 - 禁止创建重复的通用组件，先检查 `components/admin/` 和 `components/ui/`
