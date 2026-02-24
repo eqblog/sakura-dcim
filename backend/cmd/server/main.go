@@ -113,6 +113,7 @@ func main() {
 	gin.SetMode(cfg.Server.Mode)
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(middleware.SecurityHeaders())
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -130,9 +131,10 @@ func main() {
 	// API routes
 	api := r.Group("/api/v1")
 
-	// Public routes
+	// Public routes (rate-limited: 20 req/min for auth endpoints)
 	authHandler := handler.NewAuthHandler(authService)
-	authHandler.RegisterRoutes(api)
+	authRateLimited := api.Group("", middleware.RateLimit(rdb, 20, time.Minute))
+	authHandler.RegisterRoutes(authRateLimited)
 
 	// Protected routes
 	protected := api.Group("")
@@ -186,6 +188,9 @@ func main() {
 
 	ipHandler := handler.NewIPHandler(ipService)
 	ipHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermIPManage)))
+
+	auditHandler := handler.NewAuditHandler(auditLogRepo)
+	auditHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermAuditView)))
 
 	kvmHandler := handler.NewKVMHandler(kvmService, logger)
 	kvmHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermIPMIKVM)))

@@ -2,8 +2,10 @@ package middleware
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -11,6 +13,20 @@ import (
 	"github.com/sakura-dcim/sakura-dcim/backend/internal/repository"
 	"go.uber.org/zap"
 )
+
+// sensitiveFields are redacted from audit log details
+var sensitiveFields = map[string]bool{
+	"password":       true,
+	"root_password":  true,
+	"ipmi_pass":      true,
+	"ssh_pass":       true,
+	"snmp_community": true,
+	"secret":         true,
+	"token":          true,
+	"refresh_token":  true,
+	"access_token":   true,
+	"encryption_key": true,
+}
 
 // AuditLog middleware logs all state-changing API calls
 func AuditLog(auditRepo repository.AuditLogRepository, logger *zap.Logger) gin.HandlerFunc {
@@ -43,18 +59,98 @@ func AuditLog(auditRepo repository.AuditLogRepository, logger *zap.Logger) gin.H
 			userIDPtr = &userID
 		}
 
+		// Extract resource type and ID from the route
+		resourceType, resourceID := extractResource(c)
+
+		// Build details with sanitized request body
+		details := map[string]any{
+			"status":      c.Writer.Status(),
+			"method":      c.Request.Method,
+			"path":        c.Request.URL.Path,
+			"query":       c.Request.URL.RawQuery,
+			"body_size":   len(bodyBytes),
+			"response_sz": c.Writer.Size(),
+		}
+
+		// Include sanitized body for non-large payloads
+		if len(bodyBytes) > 0 && len(bodyBytes) < 10240 {
+			sanitized := sanitizeBody(bodyBytes)
+			if sanitized != nil {
+				details["body"] = sanitized
+			}
+		}
+
 		log := &domain.AuditLog{
-			ID:        uuid.New(),
-			TenantID:  tenantIDPtr,
-			UserID:    userIDPtr,
-			Action:    c.Request.Method + " " + c.FullPath(),
-			IPAddress: c.ClientIP(),
-			UserAgent: c.Request.UserAgent(),
-			Details:   map[string]any{"status": c.Writer.Status(), "body_size": len(bodyBytes)},
+			ID:           uuid.New(),
+			TenantID:     tenantIDPtr,
+			UserID:       userIDPtr,
+			Action:       c.Request.Method + " " + c.FullPath(),
+			ResourceType: resourceType,
+			ResourceID:   resourceID,
+			IPAddress:    c.ClientIP(),
+			UserAgent:    c.Request.UserAgent(),
+			Details:      details,
 		}
 
 		if err := auditRepo.Create(c.Request.Context(), log); err != nil {
 			logger.Error("failed to create audit log", zap.Error(err))
+		}
+	}
+}
+
+// extractResource derives resource_type and resource_id from route parameters.
+func extractResource(c *gin.Context) (string, *uuid.UUID) {
+	path := c.FullPath()
+	if path == "" {
+		return "", nil
+	}
+
+	resourceMap := map[string]string{
+		"/api/v1/servers":      "server",
+		"/api/v1/agents":       "agent",
+		"/api/v1/users":        "user",
+		"/api/v1/roles":        "role",
+		"/api/v1/tenants":      "tenant",
+		"/api/v1/os-profiles":  "os_profile",
+		"/api/v1/disk-layouts": "disk_layout",
+		"/api/v1/scripts":      "script",
+		"/api/v1/switches":     "switch",
+		"/api/v1/ip-pools":     "ip_pool",
+	}
+
+	for prefix, resType := range resourceMap {
+		if strings.HasPrefix(path, prefix) {
+			idStr := c.Param("id")
+			if idStr != "" {
+				if id, err := uuid.Parse(idStr); err == nil {
+					return resType, &id
+				}
+			}
+			return resType, nil
+		}
+	}
+
+	return "", nil
+}
+
+// sanitizeBody parses JSON body and redacts sensitive fields.
+func sanitizeBody(body []byte) map[string]any {
+	var parsed map[string]any
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil
+	}
+	redactMap(parsed)
+	return parsed
+}
+
+func redactMap(m map[string]any) {
+	for key, val := range m {
+		if sensitiveFields[strings.ToLower(key)] {
+			m[key] = "***REDACTED***"
+			continue
+		}
+		if nested, ok := val.(map[string]any); ok {
+			redactMap(nested)
 		}
 	}
 }

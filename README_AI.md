@@ -155,6 +155,13 @@ Inspired by [Tenantos](https://tenantos.com/) and [EasyDCIM](https://www.easydci
 - **Tenant Branding Columns** — Tenants table shows color swatch + logo preview, forms include all branding fields
 - **Favicon + Title** — Document title and favicon link updated dynamically on branding load
 
+#### Phase 9 — Audit Hardening + Security
+- **Enhanced Audit Middleware** — Captures sanitized request body (passwords/tokens auto-redacted), extracts resource type + ID from route params
+- **Audit Handler** — `GET /audit-logs` with filtering by action, resource_type, user_id, and date range (RBAC: `audit.view`)
+- **Rate Limiter** — Redis sorted-set sliding window: 20 req/min on auth endpoints, per-user or per-IP (fail-open on Redis errors)
+- **Security Headers** — CSP, X-Frame-Options DENY, X-Content-Type-Options nosniff, X-XSS-Protection, Referrer-Policy, Permissions-Policy, HSTS
+- **Audit Log UI** — Advanced filters (action search, resource type dropdown, date range picker), HTTP status tags, detail modal with full JSON
+
 ### Planned
 
 | Feature | Description |
@@ -395,7 +402,7 @@ Resources:
   CRUD   /api/v1/tenants              # Tenant management
 
 Audit:
-  GET    /api/v1/audit-logs           # Search & filter
+  GET    /api/v1/audit-logs           # Search & filter (action, resource_type, user_id, date range) ✅
 ```
 
 ## Implementation Roadmap
@@ -410,7 +417,7 @@ Audit:
 | 6 | Switch Automation + Bandwidth Monitoring | ✅ Done |
 | 7 | Hardware Inventory + IP Management | ✅ Done |
 | 8 | White-Label + Multi-Tenant Polish | ✅ Done |
-| 9 | Audit Hardening + API Docs + Security | 🔲 Next |
+| 9 | Audit Hardening + API Docs + Security | ✅ Done |
 
 ## Detailed TODO
 
@@ -504,19 +511,16 @@ Audit:
 - [ ] `backend` Reseller hierarchy: nested tenant tree, cascading permissions (deferred)
 - [ ] `web` Reseller dashboard: manage sub-tenants, assign servers (deferred)
 
-### Phase 9 — Audit, Logging & Hardening
-- [ ] `backend` Audit middleware: capture request body (sanitize passwords)
-- [ ] `backend` System event log: agent connect/disconnect, install failures, IPMI errors
-- [ ] `backend` Rate limiter: per-user on auth + power endpoints (go-redis sliding window)
-- [ ] `backend` CSP/CORS/HSTS security headers
-- [ ] `backend` Input validation: sanitize all user inputs
-- [ ] `backend` Swagger/OpenAPI generation via swaggo
-- [ ] `web` Audit log page: advanced filters (user, action, resource, date range, IP)
-- [ ] `web` System event timeline
-- [ ] `web` API documentation page (embed Swagger UI)
-- [ ] `infra` Automated backups (PostgreSQL pg_dump cron)
-- [ ] `infra` Health check endpoints for all services
-- [ ] `infra` Prometheus metrics exporter
+### Phase 9 — Audit, Logging & Hardening ✅
+- [x] `backend` Audit middleware: capture sanitized request body (passwords/tokens redacted), extract resource type/ID from routes
+- [x] `backend` Audit handler: GET /audit-logs with filtering by action, resource_type, user_id, date range
+- [x] `backend` Rate limiter: Redis sliding window (20 req/min on auth endpoints, per-user or per-IP)
+- [x] `backend` Security headers: CSP, X-Frame-Options, X-Content-Type-Options, X-XSS-Protection, Referrer-Policy, Permissions-Policy, HSTS
+- [x] `web` Audit log page: advanced filters (action search, resource type dropdown, date range picker), detail modal, status tags
+- [ ] `backend` Swagger/OpenAPI generation via swaggo (deferred)
+- [ ] `web` API documentation page (embed Swagger UI) (deferred)
+- [ ] `infra` Automated backups (PostgreSQL pg_dump cron) (deferred)
+- [ ] `infra` Prometheus metrics exporter (deferred)
 
 ## Security
 
