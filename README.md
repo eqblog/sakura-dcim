@@ -10,55 +10,47 @@ Data Center Infrastructure Management — manage dedicated servers across multip
 
 ## One-Click Start
 
-### Development
-
 ```bash
 git clone https://github.com/sakura-dcim/sakura-dcim.git
 cd sakura-dcim
-make start
 ```
 
-This will automatically:
-1. Start PostgreSQL + Redis + InfluxDB (Docker)
-2. Run database migrations
-3. Install frontend dependencies
-4. Start backend (http://localhost:8080) and frontend (http://localhost:5173)
+### Development
 
-Login: `admin@sakura-dcim.local` / `admin123`
+| Linux / macOS | Windows |
+|---------------|---------|
+| `make start` | `scripts\start-dev.bat` |
+
+Automatically: start DB + Redis + InfluxDB → migrate → install npm → start backend & frontend.
+
+- Backend: http://localhost:8080
+- Frontend: http://localhost:5173
+- Login: `admin@sakura-dcim.local` / `admin123`
 
 ### Production
 
-```bash
-make start-prod
-```
+| Linux / macOS | Windows |
+|---------------|---------|
+| `make start-prod` | `scripts\start-prod.bat` |
 
-Builds and starts all services via Docker Compose. Web UI at http://localhost:3000.
+Docker Compose builds and starts all services. Web UI at http://localhost:3000.
 
 ## One-Click Update
 
-```bash
-make update
-```
+| Linux / macOS | Windows |
+|---------------|---------|
+| `make update` | `scripts\update.bat` |
 
-This will automatically:
-1. `git pull` latest code
-2. Update Go and npm dependencies
-3. Run new database migrations
+Automatically: `git pull` → update Go & npm deps → run new migrations.
 
-Then restart:
-
-```bash
-# Development
-make start
-
-# Production
-make start-prod
-```
+Then restart with the start command above.
 
 ## Stop
 
 ```bash
 make stop
+# or
+docker compose down
 ```
 
 ## Deploy Agent
