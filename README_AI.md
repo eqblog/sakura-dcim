@@ -48,15 +48,21 @@ Inspired by [Tenantos](https://tenantos.com/) and [EasyDCIM](https://www.easydci
                       │   │   │              │
             ┌─────────┘   │   └─────────┐    │
             ▼ WS          ▼ WS          ▼ WS │
-   ┌────────────┐  ┌────────────┐  ┌────────────┐
-   │ Agent DC-1 │  │ Agent DC-2 │  │ Agent DC-N │
-   │            │  │            │  │            │
-   │ • ipmitool │  │ • ipmitool │  │ • ipmitool │
-   │ • PXE/TFTP │  │ • PXE/TFTP │  │ • PXE/TFTP │
-   │ • KVM proxy│  │ • KVM proxy│  │ • KVM proxy│
-   │ • SNMP poll│  │ • SNMP poll│  │ • SNMP poll│
-   │ • Inventory│  │ • Inventory│  │ • Inventory│
-   └────────────┘  └────────────┘  └────────────┘
+   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+   │  Agent DC-1  │  │  Agent DC-2  │  │  Agent DC-N  │
+   │              │  │              │  │              │
+   │ • ipmitool   │  │ • ipmitool   │  │ • ipmitool   │
+   │ • PXE/TFTP   │  │ • PXE/TFTP   │  │ • PXE/TFTP   │
+   │ • KVM Docker │  │ • KVM Docker │  │ • KVM Docker │
+   │ • SNMP poll  │  │ • SNMP poll  │  │ • SNMP poll  │
+   │ • Inventory  │  │ • Inventory  │  │ • Inventory  │
+   │              │  │              │  │              │
+   │ ┌──────────┐ │  │              │  │              │
+   │ │ Docker   │ │  │              │  │              │
+   │ │ Chromium │→├──┼──→ BMC Web UI│  │              │
+   │ │ + VNC    │ │  │              │  │              │
+   │ └──────────┘ │  │              │  │              │
+   └──────────────┘  └──────────────┘  └──────────────┘
 
    Data Stores:
    ┌──────────┐  ┌──────────┐  ┌──────────┐
@@ -67,8 +73,9 @@ Inspired by [Tenantos](https://tenantos.com/) and [EasyDCIM](https://www.easydci
 
 ## Features
 
-### Implemented (Phase 1 — Foundation)
+### Implemented
 
+#### Phase 1 — Foundation
 - **JWT Authentication** — Access + Refresh token flow with auto-refresh
 - **RBAC** — 25+ granular permissions, 3 built-in roles (Super Admin / Admin / Customer)
 - **Multi-Tenant** — Admin → Reseller → Customer hierarchy with resource isolation
@@ -80,12 +87,27 @@ Inspired by [Tenantos](https://tenantos.com/) and [EasyDCIM](https://www.easydci
 - **Full API Client** — Axios with interceptors, token refresh, TypeScript types
 - **Docker Compose** — One-command dev environment
 
+#### Phase 2 — Server & Agent Management
+- **Agent CRUD** — Register, list, update, delete agents with live status
+- **User Management** — CRUD with password hashing, role assignment
+- **Role Management** — CRUD with permission checkboxes (25+ permissions)
+- **Tenant Management** — Multi-tenant hierarchy CRUD
+- **Server Detail Page** — Tabbed UI (Overview / Power / KVM / Reinstall / Bandwidth / Inventory)
+- **Agent Detail Page** — Live status, version, capabilities display
+
+#### Phase 4 — NoVNC KVM Console (Docker Browser Isolation)
+- **KVM Docker Image** — Alpine + Xvfb + x11vnc + Chromium kiosk mode
+- **Agent KVM Executor** — Docker container lifecycle management + VNC TCP↔WebSocket relay
+- **Backend KVM Service** — Session management, IPMI credential decryption, agent dispatch
+- **Backend KVM Proxy** — Dual WebSocket relay (`/kvm/ws` browser ↔ `/kvm/relay` agent)
+- **Frontend noVNC** — One-click KVM console, fullscreen toggle, auto-disconnect on close
+- **Universal BMC Support** — Works with iDRAC, iLO, Supermicro, ASRock, any BMC with web UI
+
 ### Planned
 
 | Feature | Description |
 |---------|-------------|
 | **IPMI Power Control** | On / Off / Reset / Cycle via agent-proxied ipmitool |
-| ~~**NoVNC KVM Console**~~ | ✅ Implemented — Docker browser isolation (Chromium kiosk → BMC web UI), proxied via noVNC |
 | **PXE OS Reinstall** | One-click unattended OS reinstallation via PXE boot |
 | **Auto RAID** | Automatic RAID 1/5/10 based on disk count, or customer-selected |
 | **Disk Layouts** | Custom partition table templates per server tag or OS profile |
@@ -119,7 +141,7 @@ sakura-dcim/
 │   └── internal/
 │       ├── client/             # WebSocket client + reconnect
 │       ├── config/             # YAML config
-│       └── executor/           # IPMI, Inventory executors
+│       └── executor/           # IPMI, KVM, Inventory executors
 │
 ├── web/                        # React frontend
 │   └── src/
@@ -130,6 +152,7 @@ sakura-dcim/
 │       └── types/              # Full TypeScript interfaces
 │
 ├── docker/                     # Dockerfiles + nginx config
+│   └── kvm-browser/            # KVM Docker image (Chromium + VNC)
 ├── docker-compose.yml          # Full dev environment
 └── Makefile                    # Dev, build, migrate, test commands
 ```
@@ -178,18 +201,50 @@ WebSocket + JSON, request/response with correlation IDs:
 | `agent.heartbeat` | Agent → Panel | Periodic health + version info |
 | `ipmi.power.*` | Panel → Agent | Power on/off/reset/cycle/status |
 | `ipmi.sensors` | Panel → Agent | Read temperature, fan, voltage |
-| `ipmi.kvm.start` | Panel → Agent | Start KVM proxy session |
+| `ipmi.kvm.start` | Panel → Agent | Start KVM Docker container + VNC relay |
+| `ipmi.kvm.stop` | Panel → Agent | Stop KVM session + destroy container |
 | `pxe.prepare` | Panel → Agent | Configure DHCP/TFTP for reinstall |
 | `pxe.status` | Agent → Panel | Installation progress updates |
 | `raid.configure` | Panel → Agent | Set up RAID before OS install |
 | `inventory.scan` | Panel → Agent | Trigger hardware detection |
 | `snmp.poll` | Panel → Agent | Poll switch bandwidth counters |
 
+## KVM Architecture (Docker Browser Isolation)
+
+Unlike traditional KVM solutions that require direct VNC/Java access to the BMC, Sakura DCIM uses **Docker browser isolation** for universal BMC compatibility:
+
+```
+Browser (noVNC)          Backend (WS relay)         Agent                    Docker Container
+     │                        │                       │                          │
+     │──POST /servers/:id/kvm─►│                       │                          │
+     │                        │──ipmi.kvm.start──────►│                          │
+     │                        │                       │──docker run────────────►│
+     │                        │                       │  (Chromium kiosk + VNC)  │
+     │                        │                       │◄──container ready────────│
+     │                        │                       │──TCP VNC connect───────►│
+     │                        │◄──{session_id}─────────│                          │
+     │◄──{ws_url}─────────────│                       │                          │
+     │                        │                       │                          │
+     │──WS /kvm/ws──────────►│                       │                          │
+     │                        │◄──WS /kvm/relay────────│                          │
+     │                        │                       │                          │
+     │◄═══VNC binary relay═══►│◄═══VNC binary relay═══►│◄═══TCP VNC═══════════►│──→ BMC Web UI
+     │    (noVNC renders)     │    (WebSocket bridge)  │    (raw VNC)            │    (https://IPMI_IP)
+```
+
+**Why this approach?**
+- **Universal**: Works with any BMC type (iDRAC, iLO, Supermicro, ASRock) — no vendor-specific protocol needed
+- **Secure**: Users never access BMC directly; Docker container is network-isolated to only reach the target BMC IP
+- **Compatible**: Even Java-based KVM applets work inside the Chromium container
+- **Credential-safe**: IPMI passwords are injected into the container, never exposed to the end user
+
+**Per-session resources**: ~200-400MB RAM, 1 CPU core, auto-destroyed on disconnect or 30-min timeout.
+
 ## Quick Start
 
 ### Prerequisites
 
-- Go 1.23+
+- Go 1.25+
 - Node.js 20+
 - Docker & Docker Compose
 
@@ -202,15 +257,18 @@ make docker-infra
 # 2. Run database migrations
 make migrate
 
-# 3. Start backend (terminal 1)
+# 3. Build KVM browser image (required for KVM console)
+docker build -t sakura-dcim/kvm-browser:latest docker/kvm-browser/
+
+# 4. Start backend (terminal 1)
 make dev-backend
 # → API server at http://localhost:8080
 
-# 4. Start frontend (terminal 2)
+# 5. Start frontend (terminal 2)
 make dev-web
 # → Web UI at http://localhost:5173
 
-# 5. Login
+# 6. Login
 #    Email:    admin@sakura-dcim.local
 #    Password: admin123
 ```
@@ -257,9 +315,14 @@ Servers:
   DELETE /api/v1/servers/:id          # Delete
   POST   /api/v1/servers/:id/power    # Power control
   GET    /api/v1/servers/:id/sensors  # IPMI sensors
-  GET    /api/v1/servers/:id/kvm      # KVM console URL
+  POST   /api/v1/servers/:id/kvm     # Start KVM session ✅
+  DELETE /api/v1/servers/:id/kvm     # Stop KVM session ✅
   POST   /api/v1/servers/:id/reinstall # OS reinstall
   GET    /api/v1/servers/:id/bandwidth # Bandwidth stats
+
+KVM WebSocket:
+  WS     /api/v1/kvm/ws              # Browser noVNC connection ✅
+  WS     /api/v1/kvm/relay           # Agent VNC relay connection ✅
 
 Agents:
   GET    /api/v1/agents               # List
@@ -397,7 +460,7 @@ Audit:
 - **Tenant Isolation** — Every query filtered by tenant_id
 - **IPMI Credentials** — AES-256-GCM encrypted at rest, decrypted only when sent to agent
 - **Agent Auth** — Per-agent tokens, bcrypt hashed, validated on WebSocket connect
-- **KVM Sessions** — Short-lived tokens (5min), agent proxies so IPMI stays on private network
+- **KVM Sessions** — Short-lived tokens, Docker browser isolation (user never touches BMC directly), 30-min auto-expiry, container destroyed on disconnect
 - **Audit Trail** — Every mutation logged with user, IP, user-agent, request details
 
 ## Make Commands
@@ -415,6 +478,7 @@ make docker-up       # Start all services
 make docker-down     # Stop all services
 make test-backend    # Run Go tests
 make lint-backend    # Run Go linter
+make build-kvm       # Build KVM browser Docker image
 make clean           # Remove build artifacts
 ```
 
