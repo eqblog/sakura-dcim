@@ -42,6 +42,8 @@ type IPPool struct {
 	Network     string     `json:"network" db:"network"`
 	Gateway     string     `json:"gateway" db:"gateway"`
 	Description string     `json:"description" db:"description"`
+	TotalIPs    int        `json:"total_ips" db:"-"`
+	UsedIPs     int        `json:"used_ips" db:"-"`
 }
 
 type IPAddress struct {
@@ -51,6 +53,26 @@ type IPAddress struct {
 	ServerID *uuid.UUID `json:"server_id,omitempty" db:"server_id"`
 	Status   string     `json:"status" db:"status"` // available/assigned/reserved
 	Note     string     `json:"note" db:"note"`
+}
+
+type IPPoolCreateRequest struct {
+	TenantID    *uuid.UUID `json:"tenant_id"`
+	Network     string     `json:"network" binding:"required"`
+	Gateway     string     `json:"gateway" binding:"required"`
+	Description string     `json:"description"`
+}
+
+type IPAddressCreateRequest struct {
+	Address  string     `json:"address" binding:"required"`
+	ServerID *uuid.UUID `json:"server_id"`
+	Status   string     `json:"status"`
+	Note     string     `json:"note"`
+}
+
+type IPAddressUpdateRequest struct {
+	ServerID *uuid.UUID `json:"server_id"`
+	Status   *string    `json:"status"`
+	Note     *string    `json:"note"`
 }
 
 // BandwidthDataPoint represents a single bandwidth measurement

@@ -67,6 +67,9 @@ func main() {
 	installTaskRepo := postgres.NewInstallTaskRepo(db)
 	switchRepo := postgres.NewSwitchRepo(db)
 	switchPortRepo := postgres.NewSwitchPortRepo(db)
+	inventoryRepo := postgres.NewInventoryRepo(db)
+	ipPoolRepo := postgres.NewIPPoolRepo(db)
+	ipAddressRepo := postgres.NewIPAddressRepo(db)
 
 	// WebSocket Hub
 	hub := ws.NewHub(logger)
@@ -87,6 +90,8 @@ func main() {
 	reinstallService := service.NewReinstallService(serverRepo, osProfileRepo, diskLayoutRepo, scriptRepo, installTaskRepo, hub, cfg, logger)
 	switchService := service.NewSwitchService(switchRepo, switchPortRepo, hub, logger)
 	bandwidthService := service.NewBandwidthService(switchRepo, switchPortRepo, hub, logger)
+	inventoryService := service.NewInventoryService(inventoryRepo, serverRepo, hub, logger)
+	ipService := service.NewIPService(ipPoolRepo, ipAddressRepo)
 
 	// Register heartbeat event handler
 	hub.OnEvent(ws.ActionAgentHeartbeat, func(agentID uuid.UUID, msg *ws.Message) {
@@ -100,6 +105,9 @@ func main() {
 
 	// Register SNMP data event handler
 	hub.OnEvent(ws.ActionSNMPData, bandwidthService.HandleSNMPDataEvent)
+
+	// Register inventory result event handler
+	hub.OnEvent(ws.ActionInventoryResult, inventoryService.HandleInventoryResultEvent)
 
 	// Gin
 	gin.SetMode(cfg.Server.Mode)
@@ -169,6 +177,15 @@ func main() {
 
 	bandwidthHandler := handler.NewBandwidthHandler(bandwidthService)
 	bandwidthHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermBandwidthView)))
+
+	inventoryHandler := handler.NewInventoryHandler(inventoryService)
+	inventoryHandler.RegisterRoutes(
+		protected.Group("", middleware.RequirePermission(roleRepo, domain.PermInventoryView)),
+		protected.Group("", middleware.RequirePermission(roleRepo, domain.PermInventoryScan)),
+	)
+
+	ipHandler := handler.NewIPHandler(ipService)
+	ipHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermIPManage)))
 
 	kvmHandler := handler.NewKVMHandler(kvmService, logger)
 	kvmHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermIPMIKVM)))

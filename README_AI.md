@@ -135,13 +135,22 @@ Inspired by [Tenantos](https://tenantos.com/) and [EasyDCIM](https://www.easydci
 - **Agent SNMP Executor** — snmpwalk-based interface counter polling with parsed port traffic data
 - **DB Migration** — Version-controlled migration adding SSH creds, vendor, VLAN, status fields
 
+#### Phase 7 — Hardware Inventory + IP Pool Management
+- **Inventory Scan** — Agent-triggered hardware detection (lscpu, dmidecode, lsblk, ip addr) stored per-component
+- **Inventory Tab** — Rich component display: CPU details, disk table (SSD/HDD/NVMe), network interfaces, memory & system info
+- **Inventory Events** — Agent can push inventory.result events for automatic collection
+- **IP Pool CRUD** — CIDR-based pools with gateway, usage progress bar (total/used counts)
+- **IP Address CRUD** — Per-pool address management with status (available/assigned/reserved) and server assignment
+- **Auto-Assign** — One-click next-available IP assignment from pool to server
+- **Backend Repository Layer** — InventoryRepository (upsert/list/delete), IPPoolRepository, IPAddressRepository with PostgreSQL
+- **Backend Services** — InventoryService (scan via agent, store results), IPService (pool/address CRUD, auto-assign)
+- **RBAC Protected** — `inventory.view`, `inventory.scan`, `ip.manage` permissions
+
 ### Planned
 
 | Feature | Description |
 |---------|-------------|
 | **IPMI Sensor Graphs** | Temperature, fan speed, voltage time-series charts via InfluxDB |
-| **Hardware Inventory** | Auto-detect CPU, RAM, disks, NICs via PXE boot or shell command |
-| **IP Pool Management** | CIDR-based IP pools with assignment tracking |
 | **White-Label** | Custom domain, logo, colors, favicon per tenant |
 | **Reseller System** | Unlimited nesting, sub-resellers, per-reseller branding |
 
@@ -349,6 +358,8 @@ Servers:
   POST   /api/v1/servers/:id/reinstall         # OS reinstall ✅
   GET    /api/v1/servers/:id/reinstall/status  # Install progress ✅
   GET    /api/v1/servers/:id/bandwidth         # Bandwidth stats ✅
+  GET    /api/v1/servers/:id/inventory          # Hardware inventory ✅
+  POST   /api/v1/servers/:id/inventory/scan     # Trigger inventory scan ✅
 
 KVM WebSocket:
   WS     /api/v1/kvm/ws              # Browser noVNC connection ✅
@@ -367,7 +378,9 @@ Resources:
   CRUD   /api/v1/switches/:id/ports  # Switch port management ✅
   POST   /api/v1/switches/:id/ports/:portId/provision  # Auto-provision port ✅
   GET    /api/v1/switches/:id/ports/:portId/status     # Live port status ✅
-  CRUD   /api/v1/ip-pools             # IP address pools
+  CRUD   /api/v1/ip-pools             # IP address pools ✅
+  CRUD   /api/v1/ip-pools/:id/addresses         # IP addresses per pool ✅
+  POST   /api/v1/ip-pools/:id/assign            # Auto-assign next available ✅
   CRUD   /api/v1/users                # User management
   CRUD   /api/v1/roles                # Role management
   CRUD   /api/v1/tenants              # Tenant management
@@ -386,8 +399,8 @@ Audit:
 | 4 | NoVNC KVM Console (Docker Browser Isolation) | ✅ Done |
 | 5 | PXE OS Reinstall + Auto RAID + Scripts | ✅ Done |
 | 6 | Switch Automation + Bandwidth Monitoring | ✅ Done |
-| 7 | Hardware Inventory + IP Management | 🔲 Next |
-| 8 | White-Label + Multi-Tenant Polish | 🔲 |
+| 7 | Hardware Inventory + IP Management | ✅ Done |
+| 8 | White-Label + Multi-Tenant Polish | 🔲 Next |
 | 9 | Audit Hardening + API Docs + Security | 🔲 |
 
 ## Detailed TODO
@@ -453,16 +466,20 @@ Audit:
 - [x] `web` Server Bandwidth tab: per-port stats with 95th percentile, period selector
 - [x] `web` Bandwidth overview page: switch list with SNMP status
 
-### Phase 7 — Inventory & IP Management
-- [ ] `backend` Inventory handler: GET /servers/:id/inventory, POST /servers/:id/inventory/scan
-- [ ] `backend` Inventory service: store scan results, parse components
-- [ ] `backend` IP Pool CRUD handler + service
-- [ ] `backend` IP Address assignment/release logic (auto-assign from pool)
-- [ ] `agent` Inventory scanner: lshw JSON → parse CPU/RAM/Disk/NIC/GPU
-- [ ] `agent` PXE inventory mode: boot to mini-Linux, scan, report, reboot
-- [ ] `web` Server Inventory tab: component tree (CPU, RAM DIMMs, Disks, NICs)
-- [ ] `web` IP Pools page: pool CRUD + address table with status
-- [ ] `web` IP assignment modal in server detail
+### Phase 7 — Inventory & IP Management ✅
+- [x] `backend` Inventory handler: GET /servers/:id/inventory, POST /servers/:id/inventory/scan
+- [x] `backend` Inventory service: store scan results per-component (upsert), handle agent events
+- [x] `backend` Inventory repository: PostgreSQL upsert/list/delete for server_inventory table
+- [x] `backend` IP Pool CRUD handler + service (with usage counts)
+- [x] `backend` IP Address CRUD handler + service (status: available/assigned/reserved)
+- [x] `backend` IP Address auto-assign logic (next available from pool)
+- [x] `backend` IP Pool/Address repositories: full CRUD + GetNextAvailable
+- [x] `agent` Inventory scanner: lscpu, dmidecode, lsblk -J, ip -j addr show (already existed)
+- [x] `web` Server Inventory tab: CPU details, disk table, network interfaces, memory/system raw output
+- [x] `web` IP Pools page: pool CRUD + usage progress bar + address management panel
+- [x] `web` IP Address CRUD: add/edit/delete with status filter
+- [ ] `agent` PXE inventory mode: boot to mini-Linux, scan, report, reboot (deferred)
+- [ ] `web` IP assignment modal in server detail (deferred)
 
 ### Phase 8 — White-Label & Multi-Tenant Polish
 - [ ] `backend` Tenant settings API: logo, colors, favicon, custom domain

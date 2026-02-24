@@ -93,6 +93,30 @@ type InstallTaskRepository interface {
 	UpdateStatus(ctx context.Context, id uuid.UUID, status domain.InstallTaskStatus, progress int, log string) error
 }
 
+type InventoryRepository interface {
+	Upsert(ctx context.Context, inv *domain.ServerInventory) error
+	ListByServerID(ctx context.Context, serverID uuid.UUID) ([]domain.ServerInventory, error)
+	DeleteByServerID(ctx context.Context, serverID uuid.UUID) error
+}
+
+type IPPoolRepository interface {
+	Create(ctx context.Context, pool *domain.IPPool) error
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.IPPool, error)
+	List(ctx context.Context, tenantID *uuid.UUID) ([]domain.IPPool, error)
+	Update(ctx context.Context, pool *domain.IPPool) error
+	Delete(ctx context.Context, id uuid.UUID) error
+}
+
+type IPAddressRepository interface {
+	Create(ctx context.Context, addr *domain.IPAddress) error
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.IPAddress, error)
+	ListByPoolID(ctx context.Context, poolID uuid.UUID) ([]domain.IPAddress, error)
+	ListByServerID(ctx context.Context, serverID uuid.UUID) ([]domain.IPAddress, error)
+	Update(ctx context.Context, addr *domain.IPAddress) error
+	Delete(ctx context.Context, id uuid.UUID) error
+	GetNextAvailable(ctx context.Context, poolID uuid.UUID) (*domain.IPAddress, error)
+}
+
 type SwitchRepository interface {
 	Create(ctx context.Context, sw *domain.Switch) error
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Switch, error)

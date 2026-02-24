@@ -19,6 +19,9 @@ import type {
   SwitchPort,
   BandwidthSummary,
   AuditLog,
+  IPPool,
+  IPAddress,
+  InventoryResult,
 } from '../types';
 
 // Auth
@@ -52,9 +55,9 @@ export const serverAPI = {
   sensors: (id: string) =>
     client.get<APIResponse>(`/servers/${id}/sensors`),
   inventory: (id: string) =>
-    client.get<APIResponse>(`/servers/${id}/inventory`),
+    client.get<APIResponse<InventoryResult>>(`/servers/${id}/inventory`),
   inventoryScan: (id: string) =>
-    client.post<APIResponse>(`/servers/${id}/inventory/scan`),
+    client.post<APIResponse<InventoryResult>>(`/servers/${id}/inventory/scan`),
   reinstall: (id: string, data: any) =>
     client.post<APIResponse>(`/servers/${id}/reinstall`, data),
   reinstallStatus: (id: string) =>
@@ -204,6 +207,31 @@ export const switchAPI = {
 export const bandwidthAPI = {
   getServerBandwidth: (serverId: string, period?: string) =>
     client.get<APIResponse<BandwidthSummary[]>>(`/servers/${serverId}/bandwidth`, { params: { period } }),
+};
+
+// IP Pools & Addresses
+export const ipPoolAPI = {
+  list: () =>
+    client.get<APIResponse<IPPool[]>>('/ip-pools'),
+  get: (id: string) =>
+    client.get<APIResponse<IPPool>>(`/ip-pools/${id}`),
+  create: (data: any) =>
+    client.post<APIResponse<IPPool>>('/ip-pools', data),
+  update: (id: string, data: any) =>
+    client.put<APIResponse<IPPool>>(`/ip-pools/${id}`, data),
+  delete: (id: string) =>
+    client.delete<APIResponse>(`/ip-pools/${id}`),
+  // Addresses
+  listAddresses: (poolId: string) =>
+    client.get<APIResponse<IPAddress[]>>(`/ip-pools/${poolId}/addresses`),
+  createAddress: (poolId: string, data: any) =>
+    client.post<APIResponse<IPAddress>>(`/ip-pools/${poolId}/addresses`, data),
+  updateAddress: (poolId: string, addrId: string, data: any) =>
+    client.put<APIResponse<IPAddress>>(`/ip-pools/${poolId}/addresses/${addrId}`, data),
+  deleteAddress: (poolId: string, addrId: string) =>
+    client.delete<APIResponse>(`/ip-pools/${poolId}/addresses/${addrId}`),
+  assignNext: (poolId: string, serverId: string) =>
+    client.post<APIResponse<IPAddress>>(`/ip-pools/${poolId}/assign`, { server_id: serverId }),
 };
 
 // Audit Logs

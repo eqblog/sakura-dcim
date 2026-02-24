@@ -250,6 +250,8 @@ export interface IPPool {
   network: string;
   gateway: string;
   description: string;
+  total_ips: number;
+  used_ips: number;
 }
 
 export interface IPAddress {
@@ -259,4 +261,19 @@ export interface IPAddress {
   server_id?: string;
   status: 'available' | 'assigned' | 'reserved';
   note: string;
+}
+
+// Server Inventory
+export interface ServerInventory {
+  id: string;
+  server_id: string;
+  component: string;
+  details: any;
+  collected_at: string;
+}
+
+export interface InventoryResult {
+  server_id: string;
+  components: ServerInventory[];
+  collected_at?: string;
 }

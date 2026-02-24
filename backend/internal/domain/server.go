@@ -88,3 +88,19 @@ type ServerDisk struct {
 	Type      string    `json:"type" db:"type"` // ssd/hdd/nvme
 	Health    string    `json:"health" db:"health"`
 }
+
+// ServerInventory represents a collected hardware component entry
+type ServerInventory struct {
+	ID          uuid.UUID `json:"id" db:"id"`
+	ServerID    uuid.UUID `json:"server_id" db:"server_id"`
+	Component   string    `json:"component" db:"component"` // cpu, memory, disks, network, system
+	Details     any       `json:"details" db:"details"`     // JSONB
+	CollectedAt time.Time `json:"collected_at" db:"collected_at"`
+}
+
+// InventoryResult is the full inventory response grouped by component
+type InventoryResult struct {
+	ServerID    uuid.UUID          `json:"server_id"`
+	Components  []ServerInventory  `json:"components"`
+	CollectedAt *time.Time         `json:"collected_at,omitempty"`
+}
