@@ -69,6 +69,23 @@ type OSProfileRepository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
+type DiskLayoutRepository interface {
+	Create(ctx context.Context, layout *domain.DiskLayout) error
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.DiskLayout, error)
+	List(ctx context.Context) ([]domain.DiskLayout, error)
+	Update(ctx context.Context, layout *domain.DiskLayout) error
+	Delete(ctx context.Context, id uuid.UUID) error
+}
+
+type ScriptRepository interface {
+	Create(ctx context.Context, script *domain.Script) error
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.Script, error)
+	List(ctx context.Context) ([]domain.Script, error)
+	ListByOSProfileID(ctx context.Context, osProfileID uuid.UUID) ([]domain.Script, error)
+	Update(ctx context.Context, script *domain.Script) error
+	Delete(ctx context.Context, id uuid.UUID) error
+}
+
 type InstallTaskRepository interface {
 	Create(ctx context.Context, task *domain.InstallTask) error
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.InstallTask, error)

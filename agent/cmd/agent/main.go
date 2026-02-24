@@ -38,6 +38,8 @@ func main() {
 	ipmiExec := executor.NewIPMIExecutor(logger)
 	inventoryExec := executor.NewInventoryExecutor(logger)
 	kvmExec := executor.NewKVMExecutor(logger)
+	pxeExec := executor.NewPXEExecutor(logger)
+	raidExec := executor.NewRAIDExecutor(logger)
 
 	// Create WebSocket client
 	wsClient := client.NewWSClient(cfg, logger, map[string]client.ActionHandler{
@@ -50,6 +52,10 @@ func main() {
 		"inventory.scan":    inventoryExec.HandleScan,
 		"ipmi.kvm.start":    kvmExec.HandleKVMStart,
 		"ipmi.kvm.stop":     kvmExec.HandleKVMStop,
+		"pxe.prepare":       pxeExec.HandlePXEPrepare,
+		"pxe.cleanup":       pxeExec.HandlePXECleanup,
+		"raid.configure":    raidExec.HandleRAIDConfigure,
+		"raid.status":       raidExec.HandleRAIDStatus,
 	})
 
 	// Connect

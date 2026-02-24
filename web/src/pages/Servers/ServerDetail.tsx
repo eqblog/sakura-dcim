@@ -84,7 +84,7 @@ const ServerDetailPage: React.FC = () => {
     { key: 'power', label: 'Power', children: <PowerTab serverId={server.id} /> },
     { key: 'sensors', label: 'Sensors', children: <SensorsTab serverId={server.id} /> },
     { key: 'kvm', label: 'KVM', children: <KvmTab serverId={server.id} /> },
-    { key: 'reinstall', label: 'Reinstall', children: <ReinstallTab /> },
+    { key: 'reinstall', label: 'Reinstall', children: <ReinstallTab serverId={server.id} /> },
     { key: 'bandwidth', label: 'Bandwidth', children: <BandwidthTab /> },
     { key: 'inventory', label: 'Inventory', children: <InventoryTab /> },
   ];

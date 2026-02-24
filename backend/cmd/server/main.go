@@ -61,6 +61,10 @@ func main() {
 	agentRepo := postgres.NewAgentRepo(db)
 	tenantRepo := postgres.NewTenantRepo(db)
 	auditLogRepo := postgres.NewAuditLogRepo(db)
+	osProfileRepo := postgres.NewOSProfileRepo(db)
+	diskLayoutRepo := postgres.NewDiskLayoutRepo(db)
+	scriptRepo := postgres.NewScriptRepo(db)
+	installTaskRepo := postgres.NewInstallTaskRepo(db)
 
 	// WebSocket Hub
 	hub := ws.NewHub(logger)
@@ -75,6 +79,10 @@ func main() {
 	tenantService := service.NewTenantService(tenantRepo)
 	kvmService := service.NewKVMService(serverRepo, hub, cfg, logger)
 	ipmiService := service.NewIPMIService(serverRepo, hub, cfg, logger)
+	osProfileService := service.NewOSProfileService(osProfileRepo)
+	diskLayoutService := service.NewDiskLayoutService(diskLayoutRepo)
+	scriptService := service.NewScriptService(scriptRepo)
+	reinstallService := service.NewReinstallService(serverRepo, osProfileRepo, diskLayoutRepo, scriptRepo, installTaskRepo, hub, cfg, logger)
 
 	// Register heartbeat event handler
 	hub.OnEvent(ws.ActionAgentHeartbeat, func(agentID uuid.UUID, msg *ws.Message) {
@@ -82,6 +90,9 @@ func main() {
 			logger.Error("failed to update agent last_seen", zap.Error(err), zap.String("agent_id", agentID.String()))
 		}
 	})
+
+	// Register PXE status event handler
+	hub.OnEvent(ws.ActionPXEStatus, reinstallService.HandlePXEStatusEvent)
 
 	// Gin
 	gin.SetMode(cfg.Server.Mode)
@@ -133,6 +144,18 @@ func main() {
 	ipmiHandler := handler.NewIPMIHandler(ipmiService)
 	ipmiHandler.RegisterPowerRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermServerPower)))
 	ipmiHandler.RegisterSensorRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermIPMISensors)))
+
+	osProfileHandler := handler.NewOSProfileHandler(osProfileService)
+	osProfileHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermOSProfileManage)))
+
+	diskLayoutHandler := handler.NewDiskLayoutHandler(diskLayoutService)
+	diskLayoutHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermDiskLayoutManage)))
+
+	scriptHandler := handler.NewScriptHandler(scriptService)
+	scriptHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermScriptManage)))
+
+	reinstallHandler := handler.NewReinstallHandler(reinstallService)
+	reinstallHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermOSReinstall)))
 
 	kvmHandler := handler.NewKVMHandler(kvmService, logger)
 	kvmHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermIPMIKVM)))

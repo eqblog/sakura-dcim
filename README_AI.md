@@ -111,14 +111,22 @@ Inspired by [Tenantos](https://tenantos.com/) and [EasyDCIM](https://www.easydci
 - **Frontend noVNC** — One-click KVM console, fullscreen toggle, auto-disconnect on close
 - **Universal BMC Support** — Works with iDRAC, iLO, Supermicro, ASRock, any BMC with web UI
 
+#### Phase 5 — PXE OS Reinstall + Auto RAID + Scripts
+- **OS Profiles CRUD** — Manage OS templates (Kickstart, Preseed, Autoinstall, cloud-init) with inline editor
+- **Disk Layouts CRUD** — JSON-based partition table templates
+- **Post-Install Scripts CRUD** — Shell scripts with run order, linked to OS profiles
+- **Reinstall Wizard** — 4-step wizard: OS selection → RAID/disk config → credentials/SSH keys → review & confirm
+- **Install Task Workflow** — pending → pxe_booting → installing → post_scripts → completed/failed with progress tracking
+- **Template Engine** — Go text/template rendering with server variables (IP, hostname, MAC, SSH keys, password hash)
+- **Auto RAID Logic** — Automatic RAID level selection based on disk count (1=none, 2=RAID1, 3=RAID5, 4+=RAID10)
+- **Agent PXE Executor** — dnsmasq DHCP/TFTP config per server MAC, kernel/initrd download, IPMI PXE boot
+- **Agent RAID Executor** — Hardware RAID (storcli) + Software RAID (mdadm) configuration
+- **Real-time Progress** — Agent sends pxe.status events → backend updates task + server status, frontend polls 5s
+
 ### Planned
 
 | Feature | Description |
 |---------|-------------|
-| **PXE OS Reinstall** | One-click unattended OS reinstallation via PXE boot |
-| **Auto RAID** | Automatic RAID 1/5/10 based on disk count, or customer-selected |
-| **Disk Layouts** | Custom partition table templates per server tag or OS profile |
-| **Post-Install Scripts** | Shell scripts executed after OS installation |
 | **SNMP Bandwidth** | Switch port monitoring, traffic stats, 95th percentile billing |
 | **IPMI Sensor Graphs** | Temperature, fan speed, voltage time-series charts via InfluxDB |
 | **Hardware Inventory** | Auto-detect CPU, RAM, disks, NICs via PXE boot or shell command |
@@ -148,7 +156,7 @@ sakura-dcim/
 │   └── internal/
 │       ├── client/             # WebSocket client + reconnect
 │       ├── config/             # YAML config
-│       └── executor/           # IPMI, KVM, Inventory executors
+│       └── executor/           # IPMI, KVM, PXE, RAID, Inventory executors
 │
 ├── web/                        # React frontend
 │   └── src/
@@ -325,7 +333,8 @@ Servers:
   GET    /api/v1/servers/:id/sensors  # IPMI sensors ✅
   POST   /api/v1/servers/:id/kvm     # Start KVM session ✅
   DELETE /api/v1/servers/:id/kvm     # Stop KVM session ✅
-  POST   /api/v1/servers/:id/reinstall # OS reinstall
+  POST   /api/v1/servers/:id/reinstall         # OS reinstall ✅
+  GET    /api/v1/servers/:id/reinstall/status  # Install progress ✅
   GET    /api/v1/servers/:id/bandwidth # Bandwidth stats
 
 KVM WebSocket:
@@ -359,8 +368,8 @@ Audit:
 | 2 | Server CRUD + Agent WebSocket wiring | ✅ Done |
 | 3 | IPMI Power Control + Sensor Monitoring | ✅ Done |
 | 4 | NoVNC KVM Console (Docker Browser Isolation) | ✅ Done |
-| 5 | PXE OS Reinstall + Auto RAID + Scripts | 🔲 Next |
-| 6 | SNMP Bandwidth Monitoring + Charts | 🔲 |
+| 5 | PXE OS Reinstall + Auto RAID + Scripts | ✅ Done |
+| 6 | SNMP Bandwidth Monitoring + Charts | 🔲 Next |
 | 7 | Hardware Inventory + IP Management | 🔲 |
 | 8 | White-Label + Multi-Tenant Polish | 🔲 |
 | 9 | Audit Hardening + API Docs + Security | 🔲 |
@@ -399,21 +408,21 @@ Audit:
 - [x] `backend` KVM WebSocket proxy: /kvm/ws (browser) + /kvm/relay (agent) dual-endpoint
 - [x] `web` KVM Console page: noVNC integration, fullscreen toggle, auto-disconnect on close
 
-### Phase 5 — PXE & OS Reinstallation
-- [ ] `backend` OS Profile CRUD handler + service
-- [ ] `backend` Disk Layout CRUD handler + service
-- [ ] `backend` Script CRUD handler + service
-- [ ] `backend` Install task workflow: create → pxe_booting → installing → post_scripts → completed/failed
-- [ ] `backend` Template engine: render Kickstart/Preseed/Autoinstall/cloud-init with server variables
-- [ ] `backend` Auto RAID logic: pick RAID level based on disk count (1 disk=none, 2=RAID1, 3+=RAID5, 4+=RAID10)
-- [ ] `agent` PXE executor: manage dnsmasq DHCP/TFTP config per server MAC
-- [ ] `agent` RAID executor: storcli/megacli (HW RAID) + mdadm (SW RAID)
-- [ ] `agent` Post-install callback: report progress via WebSocket event
-- [ ] `web` OS Profiles page: CRUD with template editor (CodeMirror/Monaco)
-- [ ] `web` Disk Layouts page: visual partition editor
-- [ ] `web` Scripts page: CRUD with shell editor
-- [ ] `web` Reinstall Wizard: Select OS → RAID config → Disk layout → SSH keys → Review → Install
-- [ ] `web` Install progress: real-time progress bar + log stream
+### Phase 5 — PXE & OS Reinstallation ✅
+- [x] `backend` OS Profile CRUD handler + service
+- [x] `backend` Disk Layout CRUD handler + service
+- [x] `backend` Script CRUD handler + service
+- [x] `backend` Install task workflow: create → pxe_booting → installing → post_scripts → completed/failed
+- [x] `backend` Template engine: render Kickstart/Preseed/Autoinstall/cloud-init with server variables
+- [x] `backend` Auto RAID logic: pick RAID level based on disk count (1 disk=none, 2=RAID1, 3+=RAID5, 4+=RAID10)
+- [x] `agent` PXE executor: manage dnsmasq DHCP/TFTP config per server MAC
+- [x] `agent` RAID executor: storcli/megacli (HW RAID) + mdadm (SW RAID)
+- [x] `agent` Post-install callback: report progress via WebSocket event
+- [x] `web` OS Profiles page: CRUD with template editor
+- [x] `web` Disk Layouts page: CRUD with JSON partition editor
+- [x] `web` Scripts page: CRUD with shell editor
+- [x] `web` Reinstall Wizard: Select OS → RAID config → Disk layout → SSH keys → Review → Install
+- [x] `web` Install progress: real-time progress bar + log stream
 
 ### Phase 6 — Bandwidth Monitoring
 - [ ] `backend` Switch CRUD handler + service

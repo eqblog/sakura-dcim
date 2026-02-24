@@ -11,6 +11,10 @@ import type {
   Role,
   Tenant,
   OSProfile,
+  DiskLayout,
+  Script,
+  InstallTask,
+  ReinstallRequest,
   AuditLog,
 } from '../types';
 
@@ -118,14 +122,52 @@ export const tenantAPI = {
 
 // OS Profiles
 export const osProfileAPI = {
-  list: () =>
-    client.get<APIResponse<OSProfile[]>>('/os-profiles'),
+  list: (params?: Record<string, any>) =>
+    client.get<APIResponse<OSProfile[]>>('/os-profiles', { params }),
+  get: (id: string) =>
+    client.get<APIResponse<OSProfile>>(`/os-profiles/${id}`),
   create: (data: any) =>
     client.post<APIResponse<OSProfile>>('/os-profiles', data),
   update: (id: string, data: any) =>
     client.put<APIResponse<OSProfile>>(`/os-profiles/${id}`, data),
   delete: (id: string) =>
     client.delete<APIResponse>(`/os-profiles/${id}`),
+};
+
+// Disk Layouts
+export const diskLayoutAPI = {
+  list: () =>
+    client.get<APIResponse<DiskLayout[]>>('/disk-layouts'),
+  get: (id: string) =>
+    client.get<APIResponse<DiskLayout>>(`/disk-layouts/${id}`),
+  create: (data: any) =>
+    client.post<APIResponse<DiskLayout>>('/disk-layouts', data),
+  update: (id: string, data: any) =>
+    client.put<APIResponse<DiskLayout>>(`/disk-layouts/${id}`, data),
+  delete: (id: string) =>
+    client.delete<APIResponse>(`/disk-layouts/${id}`),
+};
+
+// Scripts
+export const scriptAPI = {
+  list: () =>
+    client.get<APIResponse<Script[]>>('/scripts'),
+  get: (id: string) =>
+    client.get<APIResponse<Script>>(`/scripts/${id}`),
+  create: (data: any) =>
+    client.post<APIResponse<Script>>('/scripts', data),
+  update: (id: string, data: any) =>
+    client.put<APIResponse<Script>>(`/scripts/${id}`, data),
+  delete: (id: string) =>
+    client.delete<APIResponse>(`/scripts/${id}`),
+};
+
+// Reinstall
+export const reinstallAPI = {
+  start: (serverId: string, data: ReinstallRequest) =>
+    client.post<APIResponse<InstallTask>>(`/servers/${serverId}/reinstall`, data),
+  status: (serverId: string) =>
+    client.get<APIResponse<InstallTask>>(`/servers/${serverId}/reinstall/status`),
 };
 
 // Audit Logs

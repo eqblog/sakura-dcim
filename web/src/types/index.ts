@@ -145,6 +145,37 @@ export interface InstallTask {
   created_at: string;
 }
 
+// Disk Layout
+export interface DiskLayout {
+  id: string;
+  name: string;
+  description: string;
+  layout: any; // JSONB
+  tags: string[];
+  created_at: string;
+}
+
+// Script
+export interface Script {
+  id: string;
+  name: string;
+  description: string;
+  content: string;
+  run_order: number;
+  os_profile_ids: string[];
+  tags: string[];
+  created_at: string;
+}
+
+// Reinstall Request
+export interface ReinstallRequest {
+  os_profile_id: string;
+  disk_layout_id?: string;
+  raid_level: string;
+  root_password: string;
+  ssh_keys: string[];
+}
+
 // Audit Log
 export interface AuditLog {
   id: string;

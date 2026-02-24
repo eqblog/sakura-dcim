@@ -10,6 +10,8 @@ import ServerDetailPage from './pages/Servers/ServerDetail';
 import AgentListPage from './pages/Agents';
 import AgentDetailPage from './pages/Agents/AgentDetail';
 import OSProfilesPage from './pages/OSProfiles';
+import DiskLayoutsPage from './pages/DiskLayouts';
+import ScriptsPage from './pages/Scripts';
 import BandwidthPage from './pages/Bandwidth';
 import MonitoringPage from './pages/Monitoring';
 import UsersPage from './pages/Users';
@@ -63,8 +65,8 @@ const App: React.FC = () => {
               <Route path="agents" element={<AgentListPage />} />
               <Route path="agents/:id" element={<AgentDetailPage />} />
               <Route path="os-profiles" element={<OSProfilesPage />} />
-              <Route path="disk-layouts" element={<OSProfilesPage />} />
-              <Route path="scripts" element={<OSProfilesPage />} />
+              <Route path="disk-layouts" element={<DiskLayoutsPage />} />
+              <Route path="scripts" element={<ScriptsPage />} />
               <Route path="switches" element={<BandwidthPage />} />
               <Route path="ip-pools" element={<IPManagementPage />} />
               <Route path="bandwidth" element={<BandwidthPage />} />
