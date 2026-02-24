@@ -1,8 +1,30 @@
-.PHONY: dev dev-backend dev-web build migrate migrate-down docker-up docker-down clean
+.PHONY: start start-prod update stop dev-backend dev-web build migrate migrate-down docker-up docker-down clean test
+
+# ============================================================
+# One-click commands
+# ============================================================
+
+## Start development environment (infra + migrate + backend + frontend)
+start:
+	bash scripts/start-dev.sh
+
+## Start production environment (docker compose)
+start-prod:
+	bash scripts/start-prod.sh
+
+## Pull latest code + update deps + migrate
+update:
+	bash scripts/update.sh
+
+## Stop all services
+stop:
+	docker compose down
+
+# ============================================================
+# Individual commands
+# ============================================================
 
 # Development
-dev: docker-infra dev-backend dev-web
-
 dev-backend:
 	cd backend && go run ./cmd/server
 
@@ -45,14 +67,17 @@ docker-down:
 docker-build:
 	docker compose build
 
+# Test
+test:
+	cd backend && go test ./...
+
+test-verbose:
+	cd backend && go test -v ./...
+
+# Lint
+lint:
+	cd backend && golangci-lint run ./...
+
 # Clean
 clean:
 	rm -rf backend/bin agent/bin web/dist web/node_modules
-
-# Test
-test-backend:
-	cd backend && go test ./...
-
-# Lint
-lint-backend:
-	cd backend && golangci-lint run ./...
