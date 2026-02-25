@@ -1,19 +1,32 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Typography, Table, Button, Space, Modal, Form, Input, Select, InputNumber, Tag, message, Popconfirm, Tabs, Switch as AntSwitch } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Card, Typography, Table, Button, Space, Modal, Form, Input, Select, InputNumber, Tag, message, Popconfirm, Tabs, Collapse } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined, ReloadOutlined, CodeOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { switchAPI } from '../../api';
 import type { Switch, SwitchPort } from '../../types';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 const vendorOptions = [
   { label: 'Cisco IOS', value: 'cisco_ios' },
+  { label: 'Cisco NX-OS (Nexus)', value: 'cisco_nxos' },
   { label: 'Juniper JunOS', value: 'junos' },
   { label: 'Arista EOS', value: 'arista_eos' },
   { label: 'SONiC', value: 'sonic' },
-  { label: 'Cumulus', value: 'cumulus' },
+  { label: 'Cumulus Linux', value: 'cumulus' },
 ];
+
+interface CommandTemplate {
+  operation: string;
+  description: string;
+  template: string;
+}
+
+interface VendorTemplates {
+  vendor: string;
+  label: string;
+  templates: CommandTemplate[];
+}
 
 const SwitchesPage: React.FC = () => {
   const [switches, setSwitches] = useState<Switch[]>([]);
@@ -30,6 +43,10 @@ const SwitchesPage: React.FC = () => {
   const [editingPort, setEditingPort] = useState<SwitchPort | null>(null);
   const [portForm] = Form.useForm();
 
+  // Command templates state
+  const [templates, setTemplates] = useState<VendorTemplates[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+
   const fetchSwitches = async () => {
     setLoading(true);
     try {
@@ -37,6 +54,15 @@ const SwitchesPage: React.FC = () => {
       if (resp.success) setSwitches(resp.data || []);
     } catch { /* */ }
     setLoading(false);
+  };
+
+  const fetchTemplates = async () => {
+    setTemplatesLoading(true);
+    try {
+      const { data: resp } = await switchAPI.getCommandTemplates();
+      if (resp.success) setTemplates(resp.data as VendorTemplates[] || []);
+    } catch { /* */ }
+    setTemplatesLoading(false);
   };
 
   useEffect(() => { fetchSwitches(); }, []);
@@ -138,7 +164,13 @@ const SwitchesPage: React.FC = () => {
   const switchColumns: ColumnsType<Switch> = [
     { title: 'Name', dataIndex: 'name', key: 'name', sorter: (a, b) => a.name.localeCompare(b.name) },
     { title: 'IP', dataIndex: 'ip', key: 'ip' },
-    { title: 'Vendor', dataIndex: 'vendor', key: 'vendor', render: (v: string) => v ? <Tag>{v}</Tag> : '-' },
+    {
+      title: 'Vendor', dataIndex: 'vendor', key: 'vendor',
+      render: (v: string) => {
+        const opt = vendorOptions.find(o => o.value === v);
+        return v ? <Tag>{opt?.label || v}</Tag> : '-';
+      },
+    },
     { title: 'Model', dataIndex: 'model', key: 'model', ellipsis: true },
     { title: 'SNMP', dataIndex: 'snmp_version', key: 'snmp', render: (v: string) => <Tag>{v}</Tag> },
     {
@@ -179,10 +211,10 @@ const SwitchesPage: React.FC = () => {
     },
   ];
 
-  return (
-    <div>
+  const renderSwitchManagement = () => (
+    <>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={4}>Switches</Title>
+        <Title level={4} style={{ margin: 0 }}>Switches</Title>
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Add Switch</Button>
       </div>
 
@@ -201,6 +233,81 @@ const SwitchesPage: React.FC = () => {
           <Table columns={portColumns} dataSource={ports} rowKey="id" loading={portsLoading} size="small" />
         </Card>
       )}
+    </>
+  );
+
+  const renderCommandTemplates = () => (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+        <Title level={4} style={{ margin: 0 }}>Command Templates</Title>
+        <Button icon={<ReloadOutlined />} onClick={fetchTemplates} loading={templatesLoading}>Refresh</Button>
+      </div>
+      {templates.length === 0 && !templatesLoading && (
+        <Card>
+          <Text type="secondary">Click Refresh to load command templates for all supported switch vendors.</Text>
+        </Card>
+      )}
+      <Collapse
+        items={templates.map((vt) => ({
+          key: vt.vendor,
+          label: <Text strong>{vt.label}</Text>,
+          extra: <Tag>{vt.templates.length} templates</Tag>,
+          children: (
+            <Collapse
+              size="small"
+              items={vt.templates.map((t) => ({
+                key: t.operation,
+                label: (
+                  <Space>
+                    <Tag color="blue">{t.operation}</Tag>
+                    <Text type="secondary">{t.description}</Text>
+                  </Space>
+                ),
+                children: (
+                  <pre style={{
+                    background: '#f5f5f5',
+                    padding: 12,
+                    borderRadius: 4,
+                    margin: 0,
+                    fontSize: 13,
+                    lineHeight: 1.5,
+                    overflow: 'auto',
+                  }}>
+                    {t.template}
+                  </pre>
+                ),
+              }))}
+            />
+          ),
+        }))}
+      />
+    </div>
+  );
+
+  return (
+    <div>
+      <Tabs
+        items={[
+          {
+            key: 'switches',
+            label: 'Switches',
+            children: renderSwitchManagement(),
+          },
+          {
+            key: 'templates',
+            label: (
+              <Space>
+                <CodeOutlined />
+                Command Templates
+              </Space>
+            ),
+            children: renderCommandTemplates(),
+          },
+        ]}
+        onChange={(key) => {
+          if (key === 'templates' && templates.length === 0) fetchTemplates();
+        }}
+      />
 
       {/* Switch Modal */}
       <Modal title={editing ? 'Edit Switch' : 'Create Switch'} open={modalOpen} onOk={handleSubmit} onCancel={() => setModalOpen(false)} width={700} okText={editing ? 'Update' : 'Create'}>
@@ -216,7 +323,7 @@ const SwitchesPage: React.FC = () => {
               <Select options={vendorOptions} placeholder="Select vendor" allowClear />
             </Form.Item>
             <Form.Item name="model" label="Model" style={{ flex: 1 }}>
-              <Input placeholder="Catalyst 9300" />
+              <Input placeholder="Nexus 9336C-FX2" />
             </Form.Item>
           </Space>
           <Space style={{ width: '100%' }} size="middle">
@@ -252,7 +359,7 @@ const SwitchesPage: React.FC = () => {
               <InputNumber min={1} />
             </Form.Item>
             <Form.Item name="port_name" label="Port Name" rules={[{ required: true }]} style={{ flex: 1 }}>
-              <Input placeholder="GigabitEthernet0/1" />
+              <Input placeholder="Ethernet1/1" />
             </Form.Item>
           </Space>
           <Space style={{ width: '100%' }} size="middle">

@@ -27,6 +27,9 @@ func (h *SwitchHandler) RegisterRoutes(r *gin.RouterGroup) {
 		g.PUT("/:id", h.Update)
 		g.DELETE("/:id", h.Delete)
 
+		// Command templates
+		g.GET("/templates", h.GetCommandTemplates)
+
 		// Ports
 		g.GET("/:id/ports", h.ListPorts)
 		g.POST("/:id/ports", h.CreatePort)
@@ -192,6 +195,25 @@ func (h *SwitchHandler) ProvisionPort(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Message: "port provisioned"})
+}
+
+// GetCommandTemplates returns default CLI command templates for all supported switch vendors.
+func (h *SwitchHandler) GetCommandTemplates(c *gin.Context) {
+	templates := domain.DefaultSwitchTemplates()
+
+	// Optional filter by vendor query param
+	if vendor := c.Query("vendor"); vendor != "" {
+		for _, t := range templates {
+			if t.Vendor == vendor {
+				c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: t})
+				return
+			}
+		}
+		c.JSON(http.StatusNotFound, domain.APIResponse{Success: false, Error: "vendor not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: templates})
 }
 
 func (h *SwitchHandler) GetPortStatus(c *gin.Context) {

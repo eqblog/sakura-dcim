@@ -65,6 +65,8 @@ const (
 	ActionIPMISensors     = "ipmi.sensors"
 	ActionIPMIKVMStart    = "ipmi.kvm.start"
 	ActionIPMIKVMStop     = "ipmi.kvm.stop"
+	ActionIPMIUserCreate  = "ipmi.user.create"
+	ActionIPMIUserDelete  = "ipmi.user.delete"
 
 	// PXE
 	ActionPXEPrepare = "pxe.prepare"

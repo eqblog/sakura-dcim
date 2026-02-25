@@ -16,13 +16,16 @@ import (
 )
 
 type KVMSession struct {
-	SessionID string    `json:"session_id"`
-	ServerID  uuid.UUID `json:"server_id"`
-	AgentID   uuid.UUID `json:"agent_id"`
-	UserID    uuid.UUID `json:"user_id"`
-	Token     string    `json:"token"`
-	Status    string    `json:"status"` // starting, active, closing
-	CreatedAt time.Time `json:"created_at"`
+	SessionID    string    `json:"session_id"`
+	ServerID     uuid.UUID `json:"server_id"`
+	AgentID      uuid.UUID `json:"agent_id"`
+	UserID       uuid.UUID `json:"user_id"`
+	Token        string    `json:"token"`
+	Status       string    `json:"status"` // starting, active, closing
+	CreatedAt    time.Time `json:"created_at"`
+	TempUser     string    `json:"temp_user,omitempty"`
+	TempPass     string    `json:"temp_pass,omitempty"`
+	TempUserSlot int       `json:"temp_user_slot,omitempty"`
 }
 
 type KVMService struct {
@@ -117,17 +120,48 @@ func (s *KVMService) StartSession(ctx context.Context, serverID, userID uuid.UUI
 	relayURL := fmt.Sprintf("ws://127.0.0.1:%d/api/v1/kvm/relay?session=%s&token=%s",
 		s.cfg.Server.Port, sessionID, sessionToken)
 
-	// Send KVM start command to agent
-	payload := ws.KVMStartPayload{
-		IPMIIP:   server.IPMIIP,
-		IPMIUser: ipmiUser,
-		IPMIPass: ipmiPass,
+	// Create temporary IPMI user on the BMC for this session.
+	// Non-fatal: if it fails, KVM still starts but without temp credentials.
+	tempUserPayload := map[string]interface{}{
+		"ipmi_ip":   server.IPMIIP,
+		"ipmi_user": ipmiUser,
+		"ipmi_pass": ipmiPass,
+		"bmc_type":  string(server.BMCType),
+		"privilege": 4, // Administrator — needed for BMC web console access
 	}
-	// Extend payload with session info
+	tempResp, tempErr := s.hub.SendRequest(*server.AgentID, ws.ActionIPMIUserCreate, tempUserPayload, 30*time.Second)
+	if tempErr != nil {
+		s.logger.Warn("failed to create temp IPMI user (KVM will start without it)",
+			zap.String("session_id", sessionID),
+			zap.Error(tempErr))
+	} else if tempResp.Error != "" {
+		s.logger.Warn("agent returned error creating temp IPMI user",
+			zap.String("session_id", sessionID),
+			zap.String("error", tempResp.Error))
+	} else {
+		// Extract temp credentials from agent response
+		if respMap, ok := tempResp.Payload.(map[string]interface{}); ok {
+			if u, ok := respMap["username"].(string); ok {
+				session.TempUser = u
+			}
+			if p, ok := respMap["password"].(string); ok {
+				session.TempPass = p
+			}
+			if slot, ok := respMap["user_slot"].(float64); ok {
+				session.TempUserSlot = int(slot)
+			}
+			s.logger.Info("temp IPMI user created for KVM session",
+				zap.String("session_id", sessionID),
+				zap.String("temp_user", session.TempUser),
+				zap.Int("slot", session.TempUserSlot))
+		}
+	}
+
+	// Send KVM start command to agent
 	fullPayload := map[string]interface{}{
-		"ipmi_ip":    payload.IPMIIP,
-		"ipmi_user":  payload.IPMIUser,
-		"ipmi_pass":  payload.IPMIPass,
+		"ipmi_ip":    server.IPMIIP,
+		"ipmi_user":  ipmiUser,
+		"ipmi_pass":  ipmiPass,
 		"bmc_type":   string(server.BMCType),
 		"session_id": sessionID,
 		"relay_url":  relayURL,
@@ -135,6 +169,10 @@ func (s *KVMService) StartSession(ctx context.Context, serverID, userID uuid.UUI
 
 	_, err = s.hub.SendRequest(*server.AgentID, ws.ActionIPMIKVMStart, fullPayload, 60*time.Second)
 	if err != nil {
+		// Cleanup temp user if we created one
+		if session.TempUserSlot > 0 {
+			s.deleteTempUser(*server.AgentID, server.IPMIIP, ipmiUser, ipmiPass, string(server.BMCType), session.TempUserSlot)
+		}
 		s.mu.Lock()
 		delete(s.sessions, sessionID)
 		s.mu.Unlock()
@@ -161,6 +199,11 @@ func (s *KVMService) StopSession(sessionID string) error {
 	delete(s.sessions, sessionID)
 	s.mu.Unlock()
 
+	// Delete temporary IPMI user if one was created
+	if session.TempUserSlot > 0 {
+		s.deleteTempUserForSession(session)
+	}
+
 	stopPayload := map[string]string{"session_id": sessionID}
 	_, err := s.hub.SendRequest(session.AgentID, ws.ActionIPMIKVMStop, stopPayload, 10*time.Second)
 	if err != nil {
@@ -169,6 +212,51 @@ func (s *KVMService) StopSession(sessionID string) error {
 
 	s.logger.Info("KVM session stopped", zap.String("session_id", sessionID))
 	return nil
+}
+
+// deleteTempUserForSession removes the temp IPMI user associated with a KVM session.
+// It re-decrypts IPMI credentials from the database because we don't store them in session.
+func (s *KVMService) deleteTempUserForSession(session *KVMSession) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	server, err := s.serverRepo.GetByID(ctx, session.ServerID)
+	if err != nil {
+		s.logger.Warn("cannot fetch server for temp user cleanup",
+			zap.String("session_id", session.SessionID), zap.Error(err))
+		return
+	}
+
+	ipmiUser, ipmiPass := "", ""
+	if server.IPMIUser != "" {
+		ipmiUser, _ = crypto.DecryptAESGCM(server.IPMIUser, s.cfg.Crypto.EncryptionKey)
+	}
+	if server.IPMIPass != "" {
+		ipmiPass, _ = crypto.DecryptAESGCM(server.IPMIPass, s.cfg.Crypto.EncryptionKey)
+	}
+
+	s.deleteTempUser(session.AgentID, server.IPMIIP, ipmiUser, ipmiPass, string(server.BMCType), session.TempUserSlot)
+}
+
+// deleteTempUser sends ipmi.user.delete to the agent to remove a temporary IPMI user.
+func (s *KVMService) deleteTempUser(agentID uuid.UUID, ipmiIP, ipmiUser, ipmiPass, bmcType string, userSlot int) {
+	payload := map[string]interface{}{
+		"ipmi_ip":   ipmiIP,
+		"ipmi_user": ipmiUser,
+		"ipmi_pass": ipmiPass,
+		"bmc_type":  bmcType,
+		"user_slot": userSlot,
+	}
+	resp, err := s.hub.SendRequest(agentID, ws.ActionIPMIUserDelete, payload, 15*time.Second)
+	if err != nil {
+		s.logger.Warn("failed to delete temp IPMI user",
+			zap.Int("slot", userSlot), zap.Error(err))
+	} else if resp.Error != "" {
+		s.logger.Warn("agent error deleting temp IPMI user",
+			zap.Int("slot", userSlot), zap.String("error", resp.Error))
+	} else {
+		s.logger.Info("temp IPMI user deleted", zap.Int("slot", userSlot))
+	}
 }
 
 func (s *KVMService) GetSession(sessionID string) (*KVMSession, bool) {

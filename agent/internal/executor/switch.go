@@ -138,8 +138,8 @@ func (e *SwitchExecutor) execSSH(host string, port int, user, pass string, comma
 
 // generateProvisionCommands creates vendor-specific CLI commands for port configuration.
 func generateProvisionCommands(vendor string, p *SwitchProvisionPayload) []string {
-	switch strings.ToLower(vendor) {
-	case "cisco", "cisco_ios":
+	switch normalizeVendor(vendor) {
+	case "cisco_ios":
 		cmds := []string{
 			"configure terminal",
 			fmt.Sprintf("interface %s", p.PortName),
@@ -158,7 +158,30 @@ func generateProvisionCommands(vendor string, p *SwitchProvisionPayload) []strin
 		cmds = append(cmds, "end", "write memory")
 		return cmds
 
-	case "juniper", "junos":
+	case "cisco_nxos":
+		cmds := []string{
+			"configure terminal",
+			fmt.Sprintf("interface %s", p.PortName),
+		}
+		if p.Description != "" {
+			cmds = append(cmds, fmt.Sprintf("description %s", p.Description))
+		}
+		if p.VlanID > 0 {
+			cmds = append(cmds, "switchport", "switchport mode access", fmt.Sprintf("switchport access vlan %d", p.VlanID))
+		}
+		if p.SpeedMbps > 0 {
+			// NX-OS uses speed in Mbps directly for 1G/10G/25G/40G/100G
+			cmds = append(cmds, fmt.Sprintf("speed %d", p.SpeedMbps))
+		}
+		if p.AdminStatus == "down" {
+			cmds = append(cmds, "shutdown")
+		} else {
+			cmds = append(cmds, "no shutdown")
+		}
+		cmds = append(cmds, "end", "copy running-config startup-config")
+		return cmds
+
+	case "junos":
 		cmds := []string{}
 		if p.Description != "" {
 			cmds = append(cmds, fmt.Sprintf("set interfaces %s description \"%s\"", p.PortName, p.Description))
@@ -174,7 +197,7 @@ func generateProvisionCommands(vendor string, p *SwitchProvisionPayload) []strin
 		cmds = append(cmds, "commit and-quit")
 		return cmds
 
-	case "arista", "arista_eos":
+	case "arista_eos":
 		cmds := []string{
 			"configure",
 			fmt.Sprintf("interface %s", p.PortName),
@@ -193,7 +216,7 @@ func generateProvisionCommands(vendor string, p *SwitchProvisionPayload) []strin
 		cmds = append(cmds, "end", "write memory")
 		return cmds
 
-	case "sonic", "cumulus":
+	case "sonic":
 		cmds := []string{}
 		if p.VlanID > 0 {
 			cmds = append(cmds, fmt.Sprintf("sudo config vlan member add %d %s", p.VlanID, p.PortName))
@@ -209,6 +232,23 @@ func generateProvisionCommands(vendor string, p *SwitchProvisionPayload) []strin
 		cmds = append(cmds, "sudo config save -y")
 		return cmds
 
+	case "cumulus":
+		cmds := []string{}
+		if p.VlanID > 0 {
+			cmds = append(cmds, fmt.Sprintf("net add bridge bridge ports %s", p.PortName))
+			cmds = append(cmds, fmt.Sprintf("net add interface %s bridge access %d", p.PortName, p.VlanID))
+		}
+		if p.AdminStatus == "down" {
+			cmds = append(cmds, fmt.Sprintf("net add interface %s link down", p.PortName))
+		} else {
+			cmds = append(cmds, fmt.Sprintf("net del interface %s link down", p.PortName))
+		}
+		if p.Description != "" {
+			cmds = append(cmds, fmt.Sprintf("net add interface %s alias \"%s\"", p.PortName, p.Description))
+		}
+		cmds = append(cmds, "net commit")
+		return cmds
+
 	default:
 		return nil
 	}
@@ -216,12 +256,14 @@ func generateProvisionCommands(vendor string, p *SwitchProvisionPayload) []strin
 
 // generateStatusCommands creates vendor-specific CLI commands for port status queries.
 func generateStatusCommands(vendor, portName string) []string {
-	switch strings.ToLower(vendor) {
-	case "cisco", "cisco_ios":
+	switch normalizeVendor(vendor) {
+	case "cisco_ios":
 		return []string{fmt.Sprintf("show interface %s", portName)}
-	case "juniper", "junos":
+	case "cisco_nxos":
+		return []string{fmt.Sprintf("show interface %s", portName)}
+	case "junos":
 		return []string{fmt.Sprintf("show interfaces %s", portName)}
-	case "arista", "arista_eos":
+	case "arista_eos":
 		return []string{fmt.Sprintf("show interfaces %s", portName)}
 	case "sonic":
 		return []string{fmt.Sprintf("show interfaces status %s", portName)}
@@ -229,5 +271,25 @@ func generateStatusCommands(vendor, portName string) []string {
 		return []string{fmt.Sprintf("net show interface %s", portName)}
 	default:
 		return nil
+	}
+}
+
+// normalizeVendor maps various vendor name forms to a canonical key.
+func normalizeVendor(vendor string) string {
+	switch strings.ToLower(strings.TrimSpace(vendor)) {
+	case "cisco", "cisco_ios":
+		return "cisco_ios"
+	case "cisco_nxos", "nxos", "nexus":
+		return "cisco_nxos"
+	case "juniper", "junos":
+		return "junos"
+	case "arista", "arista_eos":
+		return "arista_eos"
+	case "sonic":
+		return "sonic"
+	case "cumulus":
+		return "cumulus"
+	default:
+		return strings.ToLower(vendor)
 	}
 }

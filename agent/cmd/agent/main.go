@@ -56,6 +56,8 @@ func main() {
 		"inventory.scan":    inventoryExec.HandleScan,
 		"ipmi.kvm.start":    kvmExec.HandleKVMStart,
 		"ipmi.kvm.stop":     kvmExec.HandleKVMStop,
+		"ipmi.user.create":  ipmiExec.HandleCreateTempUser,
+		"ipmi.user.delete":  ipmiExec.HandleDeleteTempUser,
 		"pxe.prepare":       pxeExec.HandlePXEPrepare,
 		"pxe.cleanup":       pxeExec.HandlePXECleanup,
 		"raid.configure":    raidExec.HandleRAIDConfigure,

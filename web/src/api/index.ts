@@ -207,6 +207,9 @@ export const switchAPI = {
     client.post<APIResponse>(`/switches/${switchId}/ports/${portId}/provision`),
   getPortStatus: (switchId: string, portId: string) =>
     client.get<APIResponse>(`/switches/${switchId}/ports/${portId}/status`),
+  // Command templates
+  getCommandTemplates: (vendor?: string) =>
+    client.get<APIResponse>(`/switches/templates`, { params: vendor ? { vendor } : undefined }),
 };
 
 // Bandwidth

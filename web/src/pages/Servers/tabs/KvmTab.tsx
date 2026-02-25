@@ -1,16 +1,21 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { Button, Space, Alert, Spin, Tooltip } from 'antd';
+import { Button, Space, Alert, Spin, Tooltip, Card, Typography, Input } from 'antd';
 import {
   DesktopOutlined,
   FullscreenOutlined,
   FullscreenExitOutlined,
   PoweroffOutlined,
   LoadingOutlined,
+  KeyOutlined,
+  EyeOutlined,
+  EyeInvisibleOutlined,
 } from '@ant-design/icons';
 import { serverAPI } from '../../../api';
 
 // @ts-expect-error noVNC has no type declarations
 import RFB from '@novnc/novnc/lib/rfb';
+
+const { Text } = Typography;
 
 interface KvmTabProps {
   serverId: string;
@@ -26,6 +31,9 @@ const KvmTab: React.FC<KvmTabProps> = ({ serverId }) => {
   const [sessionId, setSessionId] = useState<string>('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [tempUser, setTempUser] = useState<string>('');
+  const [tempPass, setTempPass] = useState<string>('');
+  const [showPass, setShowPass] = useState(false);
 
   const cleanup = useCallback(() => {
     if (rfbRef.current) {
@@ -40,6 +48,9 @@ const KvmTab: React.FC<KvmTabProps> = ({ serverId }) => {
   const startKvm = useCallback(async () => {
     setError('');
     setStatus('starting');
+    setTempUser('');
+    setTempPass('');
+    setShowPass(false);
 
     try {
       const { data: resp } = await serverAPI.kvmStart(serverId);
@@ -47,13 +58,17 @@ const KvmTab: React.FC<KvmTabProps> = ({ serverId }) => {
         throw new Error(resp.error || 'Failed to start KVM session');
       }
 
-      const { session_id } = resp.data as { session_id: string };
-      setSessionId(session_id);
+      const data = resp.data as { session_id: string; temp_user?: string; temp_pass?: string };
+      setSessionId(data.session_id);
+      if (data.temp_user) {
+        setTempUser(data.temp_user);
+        setTempPass(data.temp_pass || '');
+      }
       setStatus('connecting');
 
       // Build WS URL from current browser location (avoids proxy host mismatch)
       const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-      const wsUrl = `${wsProtocol}://${window.location.host}/api/v1/kvm/ws?session=${session_id}`;
+      const wsUrl = `${wsProtocol}://${window.location.host}/api/v1/kvm/ws?session=${data.session_id}`;
 
       // Wait briefly for agent relay to establish
       await new Promise(r => setTimeout(r, 2000));
@@ -101,6 +116,8 @@ const KvmTab: React.FC<KvmTabProps> = ({ serverId }) => {
       }
     }
     setSessionId('');
+    setTempUser('');
+    setTempPass('');
     setStatus('idle');
   }, [serverId, sessionId, cleanup]);
 
@@ -154,6 +171,36 @@ const KvmTab: React.FC<KvmTabProps> = ({ serverId }) => {
 
       {error && (
         <Alert type="error" title={error} closable onClose={() => setError('')} style={{ marginBottom: 12 }} />
+      )}
+
+      {tempUser && (status === 'connecting' || status === 'connected') && (
+        <Card
+          size="small"
+          style={{ marginBottom: 12 }}
+          title={<><KeyOutlined style={{ marginRight: 8 }} />BMC Login Credentials</>}
+        >
+          <Space direction="vertical" style={{ width: '100%' }} size={4}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Text type="secondary" style={{ width: 80, flexShrink: 0 }}>Username:</Text>
+              <Text copyable strong>{tempUser}</Text>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Text type="secondary" style={{ width: 80, flexShrink: 0 }}>Password:</Text>
+              <Input.Password
+                value={tempPass}
+                readOnly
+                size="small"
+                style={{ width: 220 }}
+                visibilityToggle={{ visible: showPass, onVisibleChange: setShowPass }}
+                iconRender={(visible) => visible ? <EyeOutlined /> : <EyeInvisibleOutlined />}
+              />
+              <Text copyable={{ text: tempPass }} />
+            </div>
+            <Text type="warning" style={{ fontSize: 12 }}>
+              Temporary account — automatically revoked on disconnect
+            </Text>
+          </Space>
+        </Card>
       )}
 
       {(status === 'starting' || status === 'connecting') && (

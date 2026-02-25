@@ -79,11 +79,17 @@ func (h *KVMHandler) StartKVM(c *gin.Context) {
 	}
 	h.relayMu.Unlock()
 
+	respData := map[string]interface{}{
+		"session_id": session.SessionID,
+	}
+	if session.TempUser != "" {
+		respData["temp_user"] = session.TempUser
+		respData["temp_pass"] = session.TempPass
+	}
+
 	c.JSON(http.StatusOK, domain.APIResponse{
 		Success: true,
-		Data: map[string]interface{}{
-			"session_id": session.SessionID,
-		},
+		Data:    respData,
 	})
 }
 
