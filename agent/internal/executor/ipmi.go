@@ -3,11 +3,49 @@ package executor
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	"go.uber.org/zap"
 )
+
+// ipmitoolPath caches the resolved path to ipmitool binary.
+// On Linux, ipmitool is often at /usr/sbin/ipmitool which may not be
+// in PATH for non-root users or certain process environments.
+var (
+	ipmitoolPath     string
+	ipmitoolPathOnce sync.Once
+)
+
+func resolveIPMITool() string {
+	// Try PATH first
+	if p, err := exec.LookPath("ipmitool"); err == nil {
+		return p
+	}
+	// Search common Linux installation paths
+	for _, p := range []string{
+		"/usr/sbin/ipmitool",
+		"/usr/bin/ipmitool",
+		"/usr/local/sbin/ipmitool",
+		"/usr/local/bin/ipmitool",
+		"/sbin/ipmitool",
+	} {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	// Fallback — will produce a clear error if truly missing
+	return "ipmitool"
+}
+
+func getIPMIToolPath() string {
+	ipmitoolPathOnce.Do(func() {
+		ipmitoolPath = resolveIPMITool()
+	})
+	return ipmitoolPath
+}
 
 // IPMIExecutor handles IPMI commands via ipmitool
 type IPMIExecutor struct {
@@ -15,6 +53,8 @@ type IPMIExecutor struct {
 }
 
 func NewIPMIExecutor(logger *zap.Logger) *IPMIExecutor {
+	ipmitoolBin := getIPMIToolPath()
+	logger.Info("ipmitool resolved", zap.String("path", ipmitoolBin))
 	return &IPMIExecutor{logger: logger}
 }
 
@@ -39,7 +79,7 @@ func (e *IPMIExecutor) runIPMI(bmcType, ip, user, pass string, args ...string) (
 	}
 
 	cmdArgs = append(cmdArgs, args...)
-	cmd := exec.Command("ipmitool", cmdArgs...)
+	cmd := exec.Command(getIPMIToolPath(), cmdArgs...)
 
 	e.logger.Debug("running ipmitool", zap.String("bmc_type", bmcType), zap.Strings("args", args), zap.String("host", ip))
 

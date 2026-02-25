@@ -62,12 +62,19 @@ func (h *KVMHandler) StartKVM(c *gin.Context) {
 
 	userID := middleware.GetUserID(c)
 
-	// Build panel base URL from request
-	scheme := "ws"
-	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
-		scheme = "wss"
+	// Detect real host — prefer X-Forwarded-Host (set by nginx/Vite proxy),
+	// fall back to request Host header.
+	realHost := c.GetHeader("X-Forwarded-Host")
+	if realHost == "" {
+		realHost = c.Request.Host
 	}
-	panelBaseURL := scheme + "://" + c.Request.Host
+
+	// Build panel base URL for agent relay (agent → backend direct, use c.Request.Host)
+	relayScheme := "ws"
+	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+		relayScheme = "wss"
+	}
+	panelBaseURL := relayScheme + "://" + c.Request.Host
 
 	session, err := h.kvmService.StartSession(c.Request.Context(), serverID, userID, panelBaseURL)
 	if err != nil {
@@ -82,11 +89,12 @@ func (h *KVMHandler) StartKVM(c *gin.Context) {
 	}
 	h.relayMu.Unlock()
 
+	// Build ws_url for browser using real host (public IP, not proxy host)
 	wsScheme := "ws"
 	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
 		wsScheme = "wss"
 	}
-	wsURL := wsScheme + "://" + c.Request.Host + "/api/v1/kvm/ws?session=" + session.SessionID
+	wsURL := wsScheme + "://" + realHost + "/api/v1/kvm/ws?session=" + session.SessionID
 
 	c.JSON(http.StatusOK, domain.APIResponse{
 		Success: true,
