@@ -63,7 +63,7 @@ func (h *UserHandler) Get(c *gin.Context) {
 func (h *UserHandler) Create(c *gin.Context) {
 	var req domain.UserCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 
@@ -86,7 +86,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 
 	var req domain.UserUpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 

@@ -42,7 +42,7 @@ func (h *DiscoveryHandler) StartDiscovery(c *gin.Context) {
 
 	var req domain.DiscoveryStartRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 
@@ -145,7 +145,7 @@ func (h *DiscoveryHandler) ApproveServer(c *gin.Context) {
 
 	var req domain.DiscoveryApproveRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 

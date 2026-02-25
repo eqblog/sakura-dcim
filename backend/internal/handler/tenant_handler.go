@@ -71,7 +71,7 @@ func (h *TenantHandler) Get(c *gin.Context) {
 func (h *TenantHandler) Create(c *gin.Context) {
 	var req service.TenantCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 
@@ -93,7 +93,7 @@ func (h *TenantHandler) Update(c *gin.Context) {
 
 	var req service.TenantUpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 

@@ -82,7 +82,7 @@ func (h *ServerHandler) Get(c *gin.Context) {
 func (h *ServerHandler) Create(c *gin.Context) {
 	var req domain.ServerCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 
@@ -105,7 +105,7 @@ func (h *ServerHandler) Update(c *gin.Context) {
 
 	var req domain.ServerUpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 

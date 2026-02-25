@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Card, Typography, Tree, Table, Button, Space, Tag, Spin, Descriptions, Modal, message } from 'antd';
-import { ApartmentOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Card, Typography, Tree, Table, Button, Space, Tag, Spin, Descriptions } from 'antd';
+import { ApartmentOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { DataNode } from 'antd/es/tree';
 import { tenantAPI, serverAPI } from '../../api';
 import type { Tenant, Server, PaginatedResult } from '../../types';

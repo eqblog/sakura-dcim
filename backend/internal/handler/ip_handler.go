@@ -64,7 +64,7 @@ func (h *IPHandler) GetPool(c *gin.Context) {
 func (h *IPHandler) CreatePool(c *gin.Context) {
 	var pool domain.IPPool
 	if err := c.ShouldBindJSON(&pool); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 	result, err := h.svc.CreatePool(c.Request.Context(), &pool)
@@ -83,7 +83,7 @@ func (h *IPHandler) UpdatePool(c *gin.Context) {
 	}
 	var pool domain.IPPool
 	if err := c.ShouldBindJSON(&pool); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 	result, err := h.svc.UpdatePool(c.Request.Context(), id, &pool)
@@ -129,7 +129,7 @@ func (h *IPHandler) CreateAddress(c *gin.Context) {
 	}
 	var addr domain.IPAddress
 	if err := c.ShouldBindJSON(&addr); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 	result, err := h.svc.CreateAddress(c.Request.Context(), poolID, &addr)
@@ -148,7 +148,7 @@ func (h *IPHandler) UpdateAddress(c *gin.Context) {
 	}
 	var req domain.IPAddressUpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 	result, err := h.svc.UpdateAddress(c.Request.Context(), addrID, &req)
@@ -182,7 +182,7 @@ func (h *IPHandler) AssignNextAvailable(c *gin.Context) {
 		ServerID string `json:"server_id" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 	serverID, err := uuid.Parse(req.ServerID)

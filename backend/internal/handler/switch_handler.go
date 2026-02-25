@@ -40,6 +40,9 @@ func (h *SwitchHandler) RegisterRoutes(r *gin.RouterGroup) {
 		g.POST("/:id/ports/:portId/provision", h.ProvisionPort)
 		g.GET("/:id/ports/:portId/status", h.GetPortStatus)
 
+		// DHCP relay
+		g.POST("/:id/dhcp-relay", h.ConfigureDHCPRelay)
+
 		// Server↔Port linkage
 		g.GET("/server/:serverId/ports", h.ListPortsByServer)
 		g.PUT("/ports/:portId/link", h.LinkPort)
@@ -73,7 +76,7 @@ func (h *SwitchHandler) Get(c *gin.Context) {
 func (h *SwitchHandler) Create(c *gin.Context) {
 	var sw domain.Switch
 	if err := c.ShouldBindJSON(&sw); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 	result, err := h.svc.Create(c.Request.Context(), &sw)
@@ -92,7 +95,7 @@ func (h *SwitchHandler) Update(c *gin.Context) {
 	}
 	var sw domain.Switch
 	if err := c.ShouldBindJSON(&sw); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 	result, err := h.svc.Update(c.Request.Context(), id, &sw)
@@ -140,7 +143,7 @@ func (h *SwitchHandler) CreatePort(c *gin.Context) {
 	}
 	var port domain.SwitchPort
 	if err := c.ShouldBindJSON(&port); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 	port.SwitchID = switchID
@@ -160,7 +163,7 @@ func (h *SwitchHandler) UpdatePort(c *gin.Context) {
 	}
 	var port domain.SwitchPort
 	if err := c.ShouldBindJSON(&port); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 	result, err := h.svc.UpdatePort(c.Request.Context(), portID, &port)
@@ -247,7 +250,7 @@ func (h *SwitchHandler) LinkPort(c *gin.Context) {
 		ServerID string `json:"server_id" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 	serverID, err := uuid.Parse(req.ServerID)
@@ -273,6 +276,28 @@ func (h *SwitchHandler) UnlinkPort(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Message: "port unlinked"})
+}
+
+func (h *SwitchHandler) ConfigureDHCPRelay(c *gin.Context) {
+	switchID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: "invalid switch ID"})
+		return
+	}
+	var req domain.DHCPRelayRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
+		return
+	}
+	if err := h.svc.ConfigureDHCPRelay(c.Request.Context(), switchID, &req); err != nil {
+		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: err.Error()})
+		return
+	}
+	msg := "DHCP relay configured"
+	if req.Remove {
+		msg = "DHCP relay removed"
+	}
+	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Message: msg})
 }
 
 func (h *SwitchHandler) GetPortStatus(c *gin.Context) {

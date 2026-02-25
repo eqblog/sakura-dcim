@@ -307,11 +307,12 @@ const ReinstallTab: React.FC<Props> = ({ serverId }) => {
         OS Reinstallation
       </Title>
 
-      <Steps current={step} size="small" style={{ marginBottom: 24 }}>
-        {wizardSteps.map(s => (
-          <Steps.Step key={s.title} title={s.title} />
-        ))}
-      </Steps>
+      <Steps
+        current={step}
+        size="small"
+        style={{ marginBottom: 24 }}
+        items={wizardSteps.map(s => ({ title: s.title }))}
+      />
 
       <Form form={form} layout="vertical" initialValues={{ raid_level: 'auto' }}>
         <Card>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Typography, Table, Tag, Select, Space, Empty } from 'antd';
+import { Card, Typography, Table, Tag, Empty } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { switchAPI } from '../../api';
 import type { Switch } from '../../types';

@@ -55,7 +55,7 @@ func (h *ScriptHandler) Get(c *gin.Context) {
 func (h *ScriptHandler) Create(c *gin.Context) {
 	var script domain.Script
 	if err := c.ShouldBindJSON(&script); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 	result, err := h.svc.Create(c.Request.Context(), &script)
@@ -74,7 +74,7 @@ func (h *ScriptHandler) Update(c *gin.Context) {
 	}
 	var script domain.Script
 	if err := c.ShouldBindJSON(&script); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 	result, err := h.svc.Update(c.Request.Context(), id, &script)

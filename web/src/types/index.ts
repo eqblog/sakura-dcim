@@ -255,6 +255,9 @@ export interface IPPool {
   tenant_id?: string;
   network: string;
   gateway: string;
+  netmask: string;
+  vrf: string;
+  nameservers: string[];
   description: string;
   total_ips: number;
   used_ips: number;

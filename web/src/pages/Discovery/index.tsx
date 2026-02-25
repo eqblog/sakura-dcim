@@ -17,7 +17,6 @@ import {
   Tooltip,
 } from 'antd';
 import {
-  SearchOutlined,
   PlayCircleOutlined,
   StopOutlined,
   CheckOutlined,
@@ -28,7 +27,7 @@ import {
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { discoveryAPI, agentAPI } from '../../api';
-import type { Agent, DiscoveredServer, PaginatedResult } from '../../types';
+import type { Agent, DiscoveredServer } from '../../types';
 import ApproveModal from './ApproveModal';
 import DetailDrawer from './DetailDrawer';
 
@@ -57,7 +56,7 @@ const DiscoveryPage: React.FC = () => {
   const [detailServer, setDetailServer] = useState<DiscoveredServer | null>(null);
 
   // Auto-refresh timer
-  const timerRef = useRef<ReturnType<typeof setInterval>>();
+  const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
   // Fetch agents
   useEffect(() => {

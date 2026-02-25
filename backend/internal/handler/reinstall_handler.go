@@ -33,7 +33,7 @@ func (h *ReinstallHandler) StartReinstall(c *gin.Context) {
 
 	var req domain.ReinstallRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 

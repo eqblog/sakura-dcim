@@ -54,13 +54,22 @@ const IPManagementPage: React.FC = () => {
 
   const openEdit = (record: IPPool) => {
     setEditing(record);
-    form.setFieldsValue(record);
+    form.setFieldsValue({
+      ...record,
+      nameservers: record.nameservers?.join(', ') || '',
+    });
     setModalOpen(true);
   };
 
   const handleSubmit = async () => {
     try {
-      const values = await form.validateFields();
+      const raw = await form.validateFields();
+      const values = {
+        ...raw,
+        nameservers: raw.nameservers
+          ? String(raw.nameservers).split(',').map((s: string) => s.trim()).filter(Boolean)
+          : [],
+      };
       if (editing) {
         const { data: resp } = await ipPoolAPI.update(editing.id, values);
         if (resp.success) message.success('Pool updated');
@@ -143,6 +152,11 @@ const IPManagementPage: React.FC = () => {
   const poolColumns: ColumnsType<IPPool> = [
     { title: 'Network', dataIndex: 'network', key: 'network', sorter: (a, b) => a.network.localeCompare(b.network) },
     { title: 'Gateway', dataIndex: 'gateway', key: 'gateway' },
+    { title: 'Netmask', dataIndex: 'netmask', key: 'netmask' },
+    { title: 'VRF', dataIndex: 'vrf', key: 'vrf', render: (v: string) => v || '-',
+      filters: [...new Set(pools.map(p => p.vrf).filter(Boolean))].map(v => ({ text: v, value: v })),
+      onFilter: (value, record) => record.vrf === value,
+    },
     { title: 'Description', dataIndex: 'description', key: 'description', ellipsis: true },
     { title: 'Usage', key: 'usage', width: 180, render: (_, r) => {
       const pct = r.total_ips > 0 ? Math.round((r.used_ips / r.total_ips) * 100) : 0;
@@ -226,6 +240,15 @@ const IPManagementPage: React.FC = () => {
           </Form.Item>
           <Form.Item name="gateway" label="Gateway" rules={[{ required: true }]}>
             <Input placeholder="10.0.0.1" />
+          </Form.Item>
+          <Form.Item name="netmask" label="Netmask">
+            <Input placeholder="255.255.255.0" />
+          </Form.Item>
+          <Form.Item name="vrf" label="VRF">
+            <Input placeholder="default (empty = no VRF)" />
+          </Form.Item>
+          <Form.Item name="nameservers" label="Nameservers">
+            <Input placeholder="8.8.8.8, 8.8.4.4 (comma-separated)" />
           </Form.Item>
           <Form.Item name="tenant_id" label="Tenant">
             <Select

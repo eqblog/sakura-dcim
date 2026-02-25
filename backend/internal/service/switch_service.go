@@ -225,3 +225,32 @@ func (s *SwitchService) GetPortStatus(ctx context.Context, switchID uuid.UUID, p
 	json.Unmarshal(raw, &result)
 	return result, nil
 }
+
+// ConfigureDHCPRelay sends a DHCP relay configuration command to a switch via the agent.
+func (s *SwitchService) ConfigureDHCPRelay(ctx context.Context, switchID uuid.UUID, req *domain.DHCPRelayRequest) error {
+	sw, err := s.switchRepo.GetByID(ctx, switchID)
+	if err != nil {
+		return fmt.Errorf("switch not found: %w", err)
+	}
+
+	payload := map[string]any{
+		"switch_ip":      sw.IP,
+		"ssh_user":       sw.SSHUser,
+		"ssh_pass":       sw.SSHPass,
+		"ssh_port":       sw.SSHPort,
+		"vendor":         sw.Vendor,
+		"interface_name": req.InterfaceName,
+		"dhcp_server_ip": req.DHCPServerIP,
+		"relay_group":    req.RelayGroup,
+		"remove":         req.Remove,
+	}
+
+	resp, err := s.hub.SendRequest(sw.AgentID, ws.ActionSwitchDHCPRelay, payload, 30*time.Second)
+	if err != nil {
+		return fmt.Errorf("agent request failed: %w", err)
+	}
+	if resp.Error != "" {
+		return fmt.Errorf("agent error: %s", resp.Error)
+	}
+	return nil
+}

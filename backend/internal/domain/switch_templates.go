@@ -130,6 +130,24 @@ write memory`,
 				Description: "Save running config to startup",
 				Template:    `write memory`,
 			},
+			{
+				Operation:   "dhcp_relay_interface",
+				Description: "Configure DHCP relay (ip helper-address) on an interface",
+				Template: `configure terminal
+interface {{interface_name}}
+ip helper-address {{dhcp_server_ip}}
+end
+write memory`,
+			},
+			{
+				Operation:   "dhcp_relay_remove",
+				Description: "Remove DHCP relay (ip helper-address) from an interface",
+				Template: `configure terminal
+interface {{interface_name}}
+no ip helper-address {{dhcp_server_ip}}
+end
+write memory`,
+			},
 		},
 	}
 }
@@ -265,6 +283,24 @@ copy running-config startup-config`,
 				Description: "Save running config to startup",
 				Template:    `copy running-config startup-config`,
 			},
+			{
+				Operation:   "dhcp_relay_interface",
+				Description: "Configure DHCP relay on an interface",
+				Template: `configure terminal
+interface {{interface_name}}
+ip dhcp relay address {{dhcp_server_ip}}
+end
+copy running-config startup-config`,
+			},
+			{
+				Operation:   "dhcp_relay_remove",
+				Description: "Remove DHCP relay from an interface",
+				Template: `configure terminal
+interface {{interface_name}}
+no ip dhcp relay address {{dhcp_server_ip}}
+end
+copy running-config startup-config`,
+			},
 		},
 	}
 }
@@ -352,6 +388,19 @@ commit and-quit`,
 				Operation:   "save_config",
 				Description: "Commit configuration",
 				Template:    `commit and-quit`,
+			},
+			{
+				Operation:   "dhcp_relay_interface",
+				Description: "Configure DHCP relay on an interface",
+				Template: `set forwarding-options dhcp-relay group {{relay_group}} interface {{interface_name}}
+set forwarding-options dhcp-relay server-group {{relay_group}} {{dhcp_server_ip}}
+commit and-quit`,
+			},
+			{
+				Operation:   "dhcp_relay_remove",
+				Description: "Remove DHCP relay from an interface",
+				Template: `delete forwarding-options dhcp-relay group {{relay_group}} interface {{interface_name}}
+commit and-quit`,
 			},
 		},
 	}
@@ -477,6 +526,24 @@ write memory`,
 				Description: "Save running config to startup",
 				Template:    `write memory`,
 			},
+			{
+				Operation:   "dhcp_relay_interface",
+				Description: "Configure DHCP relay (ip helper-address) on an interface",
+				Template: `configure
+interface {{interface_name}}
+ip helper-address {{dhcp_server_ip}}
+end
+write memory`,
+			},
+			{
+				Operation:   "dhcp_relay_remove",
+				Description: "Remove DHCP relay (ip helper-address) from an interface",
+				Template: `configure
+interface {{interface_name}}
+no ip helper-address {{dhcp_server_ip}}
+end
+write memory`,
+			},
 		},
 	}
 }
@@ -561,6 +628,18 @@ sudo config save -y`,
 				Operation:   "save_config",
 				Description: "Save configuration",
 				Template:    `sudo config save -y`,
+			},
+			{
+				Operation:   "dhcp_relay_interface",
+				Description: "Configure DHCP relay on a VLAN interface",
+				Template: `sudo config vlan dhcp_relay add {{interface_name}} {{dhcp_server_ip}}
+sudo config save -y`,
+			},
+			{
+				Operation:   "dhcp_relay_remove",
+				Description: "Remove DHCP relay from a VLAN interface",
+				Template: `sudo config vlan dhcp_relay del {{interface_name}} {{dhcp_server_ip}}
+sudo config save -y`,
 			},
 		},
 	}
@@ -657,6 +736,20 @@ net commit`,
 				Operation:   "save_config",
 				Description: "Commit and apply configuration",
 				Template:    `net commit`,
+			},
+			{
+				Operation:   "dhcp_relay_interface",
+				Description: "Configure DHCP relay on an interface",
+				Template: `net add dhcp relay interface {{interface_name}}
+net add dhcp relay server {{dhcp_server_ip}}
+net commit`,
+			},
+			{
+				Operation:   "dhcp_relay_remove",
+				Description: "Remove DHCP relay from an interface",
+				Template: `net del dhcp relay interface {{interface_name}}
+net del dhcp relay server {{dhcp_server_ip}}
+net commit`,
 			},
 		},
 	}

@@ -92,7 +92,7 @@ const SettingsPage: React.FC = () => {
             <Input placeholder="acme-hosting" />
           </Form.Item>
 
-          <Divider orientation="left">Appearance</Divider>
+          <Divider titlePlacement="start">Appearance</Divider>
 
           <Form.Item name="primary_color" label="Primary Color">
             <ColorPicker format="hex" showText />
@@ -118,7 +118,7 @@ const SettingsPage: React.FC = () => {
             <Input placeholder="https://example.com/favicon.ico" />
           </Form.Item>
 
-          <Divider orientation="left">Custom Domain</Divider>
+          <Divider titlePlacement="start">Custom Domain</Divider>
 
           <Form.Item name="custom_domain" label="Custom Domain">
             <Input placeholder="panel.acme.com" />

@@ -56,7 +56,7 @@ func (h *OSProfileHandler) Get(c *gin.Context) {
 func (h *OSProfileHandler) Create(c *gin.Context) {
 	var profile domain.OSProfile
 	if err := c.ShouldBindJSON(&profile); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 	result, err := h.svc.Create(c.Request.Context(), &profile)
@@ -75,7 +75,7 @@ func (h *OSProfileHandler) Update(c *gin.Context) {
 	}
 	var profile domain.OSProfile
 	if err := c.ShouldBindJSON(&profile); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 	result, err := h.svc.Update(c.Request.Context(), id, &profile)

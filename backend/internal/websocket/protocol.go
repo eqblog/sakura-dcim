@@ -83,8 +83,9 @@ const (
 	ActionInventoryResult = "inventory.result"
 
 	// Switch
-	ActionSwitchProvision = "switch.provision"
-	ActionSwitchStatus    = "switch.status"
+	ActionSwitchProvision  = "switch.provision"
+	ActionSwitchStatus     = "switch.status"
+	ActionSwitchDHCPRelay  = "switch.dhcp_relay"
 
 	// SNMP
 	ActionSNMPPoll = "snmp.poll"

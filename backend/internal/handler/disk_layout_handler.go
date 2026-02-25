@@ -55,7 +55,7 @@ func (h *DiskLayoutHandler) Get(c *gin.Context) {
 func (h *DiskLayoutHandler) Create(c *gin.Context) {
 	var layout domain.DiskLayout
 	if err := c.ShouldBindJSON(&layout); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 	result, err := h.svc.Create(c.Request.Context(), &layout)
@@ -74,7 +74,7 @@ func (h *DiskLayoutHandler) Update(c *gin.Context) {
 	}
 	var layout domain.DiskLayout
 	if err := c.ShouldBindJSON(&layout); err != nil {
-		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
 	result, err := h.svc.Update(c.Request.Context(), id, &layout)

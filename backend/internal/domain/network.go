@@ -48,6 +48,9 @@ type IPPool struct {
 	TenantID    *uuid.UUID `json:"tenant_id,omitempty" db:"tenant_id"`
 	Network     string     `json:"network" db:"network"`
 	Gateway     string     `json:"gateway" db:"gateway"`
+	Netmask     string     `json:"netmask" db:"netmask"`
+	VRF         string     `json:"vrf" db:"vrf"`
+	Nameservers []string   `json:"nameservers" db:"nameservers"`
 	Description string     `json:"description" db:"description"`
 	TotalIPs    int        `json:"total_ips" db:"-"`
 	UsedIPs     int        `json:"used_ips" db:"-"`
@@ -80,6 +83,14 @@ type IPAddressUpdateRequest struct {
 	ServerID *uuid.UUID `json:"server_id"`
 	Status   *string    `json:"status"`
 	Note     *string    `json:"note"`
+}
+
+// DHCPRelayRequest is the API payload for configuring DHCP relay on a switch interface.
+type DHCPRelayRequest struct {
+	InterfaceName string `json:"interface_name" binding:"required"` // e.g. "Vlan100", "irb.100"
+	DHCPServerIP  string `json:"dhcp_server_ip" binding:"required"` // DHCP server to relay to
+	RelayGroup    string `json:"relay_group"`                       // JunOS relay group name
+	Remove        bool   `json:"remove"`                            // true = remove relay config
 }
 
 // SensorDataPoint represents a time-series sensor reading stored in InfluxDB

@@ -443,7 +443,7 @@ const RolesPage: React.FC = () => {
             <Input placeholder="e.g. Operator" />
           </Form.Item>
 
-          <Divider orientation="left" plain>
+          <Divider titlePlacement="start" plain>
             Permissions
           </Divider>
 

@@ -274,6 +274,143 @@ func generateStatusCommands(vendor, portName string) []string {
 	}
 }
 
+// SwitchDHCPRelayPayload contains parameters for configuring DHCP relay on a switch interface.
+type SwitchDHCPRelayPayload struct {
+	SwitchIP      string `json:"switch_ip"`
+	SSHUser       string `json:"ssh_user"`
+	SSHPass       string `json:"ssh_pass"`
+	SSHPort       int    `json:"ssh_port"`
+	Vendor        string `json:"vendor"`
+	InterfaceName string `json:"interface_name"`
+	DHCPServerIP  string `json:"dhcp_server_ip"`
+	RelayGroup    string `json:"relay_group"`
+	Remove        bool   `json:"remove"`
+}
+
+// HandleSwitchDHCPRelay configures or removes DHCP relay on a switch interface via SSH.
+func (e *SwitchExecutor) HandleSwitchDHCPRelay(raw json.RawMessage) (interface{}, error) {
+	var p SwitchDHCPRelayPayload
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return nil, fmt.Errorf("parse payload: %w", err)
+	}
+
+	e.logger.Info("configuring DHCP relay",
+		zap.String("switch_ip", p.SwitchIP),
+		zap.String("interface", p.InterfaceName),
+		zap.String("dhcp_server", p.DHCPServerIP),
+		zap.Bool("remove", p.Remove),
+	)
+
+	commands := generateDHCPRelayCommands(p.Vendor, &p)
+	if len(commands) == 0 {
+		return nil, fmt.Errorf("unsupported vendor for DHCP relay: %s", p.Vendor)
+	}
+
+	output, err := e.execSSH(p.SwitchIP, p.SSHPort, p.SSHUser, p.SSHPass, commands)
+	if err != nil {
+		return nil, fmt.Errorf("ssh execution failed: %w", err)
+	}
+
+	status := "configured"
+	if p.Remove {
+		status = "removed"
+	}
+	return map[string]string{
+		"status": status,
+		"output": output,
+	}, nil
+}
+
+// generateDHCPRelayCommands creates vendor-specific CLI commands for DHCP relay configuration.
+func generateDHCPRelayCommands(vendor string, p *SwitchDHCPRelayPayload) []string {
+	switch normalizeVendor(vendor) {
+	case "cisco_ios":
+		cmds := []string{
+			"configure terminal",
+			fmt.Sprintf("interface %s", p.InterfaceName),
+		}
+		if p.Remove {
+			cmds = append(cmds, fmt.Sprintf("no ip helper-address %s", p.DHCPServerIP))
+		} else {
+			cmds = append(cmds, fmt.Sprintf("ip helper-address %s", p.DHCPServerIP))
+		}
+		cmds = append(cmds, "end", "write memory")
+		return cmds
+
+	case "cisco_nxos":
+		cmds := []string{
+			"configure terminal",
+			fmt.Sprintf("interface %s", p.InterfaceName),
+		}
+		if p.Remove {
+			cmds = append(cmds, fmt.Sprintf("no ip dhcp relay address %s", p.DHCPServerIP))
+		} else {
+			cmds = append(cmds, fmt.Sprintf("ip dhcp relay address %s", p.DHCPServerIP))
+		}
+		cmds = append(cmds, "end", "copy running-config startup-config")
+		return cmds
+
+	case "junos":
+		group := p.RelayGroup
+		if group == "" {
+			group = "default"
+		}
+		if p.Remove {
+			return []string{
+				fmt.Sprintf("delete forwarding-options dhcp-relay group %s interface %s", group, p.InterfaceName),
+				"commit and-quit",
+			}
+		}
+		return []string{
+			fmt.Sprintf("set forwarding-options dhcp-relay group %s interface %s", group, p.InterfaceName),
+			fmt.Sprintf("set forwarding-options dhcp-relay server-group %s %s", group, p.DHCPServerIP),
+			"commit and-quit",
+		}
+
+	case "arista_eos":
+		cmds := []string{
+			"configure",
+			fmt.Sprintf("interface %s", p.InterfaceName),
+		}
+		if p.Remove {
+			cmds = append(cmds, fmt.Sprintf("no ip helper-address %s", p.DHCPServerIP))
+		} else {
+			cmds = append(cmds, fmt.Sprintf("ip helper-address %s", p.DHCPServerIP))
+		}
+		cmds = append(cmds, "end", "write memory")
+		return cmds
+
+	case "sonic":
+		if p.Remove {
+			return []string{
+				fmt.Sprintf("sudo config vlan dhcp_relay del %s %s", p.InterfaceName, p.DHCPServerIP),
+				"sudo config save -y",
+			}
+		}
+		return []string{
+			fmt.Sprintf("sudo config vlan dhcp_relay add %s %s", p.InterfaceName, p.DHCPServerIP),
+			"sudo config save -y",
+		}
+
+	case "cumulus":
+		if p.Remove {
+			return []string{
+				fmt.Sprintf("net del dhcp relay interface %s", p.InterfaceName),
+				fmt.Sprintf("net del dhcp relay server %s", p.DHCPServerIP),
+				"net commit",
+			}
+		}
+		return []string{
+			fmt.Sprintf("net add dhcp relay interface %s", p.InterfaceName),
+			fmt.Sprintf("net add dhcp relay server %s", p.DHCPServerIP),
+			"net commit",
+		}
+
+	default:
+		return nil
+	}
+}
+
 // normalizeVendor maps various vendor name forms to a canonical key.
 func normalizeVendor(vendor string) string {
 	switch strings.ToLower(strings.TrimSpace(vendor)) {

@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Modal, Form, Input, Select, message } from 'antd';
-import { discoveryAPI, agentAPI } from '../../api';
+import { discoveryAPI } from '../../api';
 import type { DiscoveredServer, Agent } from '../../types';
 
 interface Props {

@@ -62,8 +62,9 @@ func main() {
 		"pxe.cleanup":       pxeExec.HandlePXECleanup,
 		"raid.configure":    raidExec.HandleRAIDConfigure,
 		"raid.status":       raidExec.HandleRAIDStatus,
-		"switch.provision":  switchExec.HandleSwitchProvision,
-		"switch.status":     switchExec.HandleSwitchStatus,
+		"switch.provision":   switchExec.HandleSwitchProvision,
+		"switch.status":      switchExec.HandleSwitchStatus,
+		"switch.dhcp_relay":  switchExec.HandleSwitchDHCPRelay,
 		"snmp.poll":         snmpExec.HandleSNMPPoll,
 	}
 
