@@ -63,48 +63,26 @@ func (h *KVMHandler) StartKVM(c *gin.Context) {
 
 	userID := middleware.GetUserID(c)
 
-	// Detect real host — prefer X-Forwarded-Host (set by nginx/Vite proxy),
-	// fall back to request Host header.
-	realHost := c.GetHeader("X-Forwarded-Host")
-	if realHost == "" {
-		realHost = c.Request.Host
-	}
-
-	// Build panel base URL for agent relay (agent → backend direct, not via proxy).
-	// Only use wss:// if the backend itself has TLS; ignore X-Forwarded-Proto since
-	// that reflects the browser→proxy link, not the agent→backend link.
-	relayScheme := "ws"
-	if c.Request.TLS != nil {
-		relayScheme = "wss"
-	}
-	panelBaseURL := relayScheme + "://" + c.Request.Host
-
-	session, err := h.kvmService.StartSession(c.Request.Context(), serverID, userID, panelBaseURL)
+	session, err := h.kvmService.StartSession(c.Request.Context(), serverID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: err.Error()})
 		return
 	}
 
-	// Prepare relay slot
+	// Prepare relay slot (agent may have connected already — don't overwrite)
 	h.relayMu.Lock()
-	h.relays[session.SessionID] = &kvmRelay{
-		waitAgent: make(chan struct{}),
-		done:      make(chan struct{}),
+	if _, exists := h.relays[session.SessionID]; !exists {
+		h.relays[session.SessionID] = &kvmRelay{
+			waitAgent: make(chan struct{}),
+			done:      make(chan struct{}),
+		}
 	}
 	h.relayMu.Unlock()
-
-	// Build ws_url for browser using real host (public IP, not proxy host)
-	wsScheme := "ws"
-	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
-		wsScheme = "wss"
-	}
-	wsURL := wsScheme + "://" + realHost + "/api/v1/kvm/ws?session=" + session.SessionID
 
 	c.JSON(http.StatusOK, domain.APIResponse{
 		Success: true,
 		Data: map[string]interface{}{
 			"session_id": session.SessionID,
-			"ws_url":     wsURL,
 		},
 	})
 }
@@ -161,6 +139,7 @@ func (h *KVMHandler) HandleAgentRelay(c *gin.Context) {
 		h.logger.Error("agent relay upgrade failed", zap.Error(err))
 		return
 	}
+	defer conn.Close()
 
 	h.relayMu.Lock()
 	relay, exists := h.relays[sessionID]
@@ -188,10 +167,11 @@ func (h *KVMHandler) HandleAgentRelay(c *gin.Context) {
 	// of agentConn (gorilla/websocket allows only one concurrent reader).
 	select {
 	case <-relay.done:
+		h.logger.Info("agent relay: session done", zap.String("session_id", sessionID))
 	case <-c.Request.Context().Done():
+		h.logger.Info("agent relay: context cancelled", zap.String("session_id", sessionID))
+		h.cleanupRelay(sessionID)
 	}
-
-	h.logger.Info("agent relay disconnected", zap.String("session_id", sessionID))
 }
 
 // HandleBrowserWS accepts the browser's noVNC WebSocket connection

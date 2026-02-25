@@ -46,7 +46,7 @@ func NewKVMService(serverRepo repository.ServerRepository, hub *ws.Hub, cfg *con
 	return svc
 }
 
-func (s *KVMService) StartSession(ctx context.Context, serverID, userID uuid.UUID, panelBaseURL string) (*KVMSession, error) {
+func (s *KVMService) StartSession(ctx context.Context, serverID, userID uuid.UUID) (*KVMSession, error) {
 	server, err := s.serverRepo.GetByID(ctx, serverID)
 	if err != nil {
 		return nil, fmt.Errorf("server not found: %w", err)
@@ -110,8 +110,12 @@ func (s *KVMService) StartSession(ctx context.Context, serverID, userID uuid.UUI
 	s.sessions[sessionID] = session
 	s.mu.Unlock()
 
-	// Build relay URL for agent to connect back
-	relayURL := fmt.Sprintf("%s/api/v1/kvm/relay?session=%s&token=%s", panelBaseURL, sessionID, sessionToken)
+	// Build relay URL for agent to connect back.
+	// Always use 127.0.0.1:<port> so the agent connects directly to the backend,
+	// bypassing any reverse proxy (nginx). The agent rewrites 127.0.0.1 to
+	// host.docker.internal when running inside Docker.
+	relayURL := fmt.Sprintf("ws://127.0.0.1:%d/api/v1/kvm/relay?session=%s&token=%s",
+		s.cfg.Server.Port, sessionID, sessionToken)
 
 	// Send KVM start command to agent
 	payload := ws.KVMStartPayload{

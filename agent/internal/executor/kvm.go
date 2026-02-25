@@ -238,12 +238,19 @@ func (e *KVMExecutor) relayVNC(ctx context.Context, session *kvmSession, relayUR
 			n, err := vncConn.Read(buf)
 			if err != nil {
 				if err != io.EOF {
-					e.logger.Debug("VNC read error", zap.Error(err))
+					e.logger.Warn("VNC→WS: VNC read error (relay ending)",
+						zap.String("session_id", session.sessionID),
+						zap.Error(err))
+				} else {
+					e.logger.Info("VNC→WS: VNC connection closed (EOF)",
+						zap.String("session_id", session.sessionID))
 				}
 				return
 			}
 			if err := wsConn.WriteMessage(websocket.BinaryMessage, buf[:n]); err != nil {
-				e.logger.Debug("WS write error", zap.Error(err))
+				e.logger.Warn("VNC→WS: WebSocket write error (relay ending)",
+					zap.String("session_id", session.sessionID),
+					zap.Error(err))
 				return
 			}
 		}
@@ -255,13 +262,17 @@ func (e *KVMExecutor) relayVNC(ctx context.Context, session *kvmSession, relayUR
 			_, data, err := wsConn.ReadMessage()
 			if err != nil {
 				if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-					e.logger.Debug("WS read error", zap.Error(err))
+					e.logger.Warn("WS→VNC: WebSocket read error",
+						zap.String("session_id", session.sessionID),
+						zap.Error(err))
 				}
 				vncConn.Close()
 				return
 			}
 			if _, err := vncConn.Write(data); err != nil {
-				e.logger.Debug("VNC write error", zap.Error(err))
+				e.logger.Warn("WS→VNC: VNC write error",
+					zap.String("session_id", session.sessionID),
+					zap.Error(err))
 				return
 			}
 		}
@@ -269,7 +280,11 @@ func (e *KVMExecutor) relayVNC(ctx context.Context, session *kvmSession, relayUR
 
 	select {
 	case <-ctx.Done():
+		e.logger.Info("VNC relay: context cancelled",
+			zap.String("session_id", session.sessionID))
 	case <-done:
+		e.logger.Info("VNC relay: VNC→WS goroutine exited",
+			zap.String("session_id", session.sessionID))
 	}
 }
 

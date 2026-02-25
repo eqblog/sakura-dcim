@@ -237,10 +237,12 @@ func main() {
 	// Start server
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{
-		Addr:         addr,
-		Handler:      r,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		Addr:              addr,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		// NOTE: Do NOT set ReadTimeout / WriteTimeout here.
+		// Go's net/http applies them as deadlines on the underlying net.Conn,
+		// which kills long-lived WebSocket connections (agent WS, KVM relay).
 	}
 
 	go func() {
