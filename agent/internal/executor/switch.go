@@ -650,6 +650,222 @@ func (e *SwitchExecutor) HandleTestConnection(raw json.RawMessage) (interface{},
 	return result, nil
 }
 
+// SwitchVLANProvisionPayload contains parameters for VLAN infrastructure provisioning.
+type SwitchVLANProvisionPayload struct {
+	SwitchIP string `json:"switch_ip"`
+	SSHUser  string `json:"ssh_user"`
+	SSHPass  string `json:"ssh_pass"`
+	SSHPort  int    `json:"ssh_port"`
+	Vendor   string `json:"vendor"`
+	VlanID   int    `json:"vlan_id"`
+	VlanName string `json:"vlan_name"`
+	Gateway  string `json:"gateway"` // SVI IP, e.g. "10.0.100.1"
+	Netmask  string `json:"netmask"` // e.g. "255.255.255.0"
+	VRF      string `json:"vrf"`     // VRF name, empty = no VRF
+	DryRun   bool   `json:"dry_run"`
+}
+
+type vlanProvisionStep struct {
+	Action   string   `json:"action"`
+	Commands []string `json:"commands"`
+	Status   string   `json:"status"`
+	Message  string   `json:"message,omitempty"`
+}
+
+// HandleSwitchVLANProvision creates VLAN, SVI/VLANIF, and VRF binding on a switch.
+func (e *SwitchExecutor) HandleSwitchVLANProvision(raw json.RawMessage) (interface{}, error) {
+	var p SwitchVLANProvisionPayload
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return nil, fmt.Errorf("parse payload: %w", err)
+	}
+
+	e.logger.Info("VLAN infrastructure provisioning",
+		zap.String("switch_ip", p.SwitchIP),
+		zap.Int("vlan_id", p.VlanID),
+		zap.String("vrf", p.VRF),
+		zap.Bool("dry_run", p.DryRun),
+	)
+
+	steps := generateVLANProvisionCommands(p.Vendor, &p)
+	if len(steps) == 0 {
+		return nil, fmt.Errorf("unsupported vendor for VLAN provisioning: %s", p.Vendor)
+	}
+
+	if p.DryRun {
+		for i := range steps {
+			steps[i].Status = "pending"
+		}
+		return map[string]interface{}{
+			"steps":   steps,
+			"dry_run": true,
+		}, nil
+	}
+
+	// Collect all commands into a single SSH session
+	var allCmds []string
+	for _, s := range steps {
+		allCmds = append(allCmds, s.Commands...)
+	}
+
+	output, err := e.execSSH(p.SwitchIP, p.SSHPort, p.SSHUser, p.SSHPass, allCmds)
+	if err != nil {
+		for i := range steps {
+			steps[i].Status = "error"
+			steps[i].Message = err.Error()
+		}
+		return map[string]interface{}{
+			"steps":   steps,
+			"dry_run": false,
+			"output":  output,
+		}, fmt.Errorf("ssh execution failed: %w", err)
+	}
+
+	for i := range steps {
+		steps[i].Status = "ok"
+	}
+	return map[string]interface{}{
+		"steps":   steps,
+		"dry_run": false,
+		"output":  output,
+	}, nil
+}
+
+// generateVLANProvisionCommands creates vendor-specific CLI commands for VLAN infrastructure.
+func generateVLANProvisionCommands(vendor string, p *SwitchVLANProvisionPayload) []vlanProvisionStep {
+	switch normalizeVendor(vendor) {
+	case "arista_eos":
+		return generateAristaVLANProvision(p)
+	case "cisco_nxos":
+		return generateNXOSVLANProvision(p)
+	case "cisco_ios":
+		return generateIOSVLANProvision(p)
+	default:
+		return nil
+	}
+}
+
+func generateAristaVLANProvision(p *SwitchVLANProvisionPayload) []vlanProvisionStep {
+	var steps []vlanProvisionStep
+
+	// Step 1: Create VLAN
+	vlanCmds := []string{"configure", fmt.Sprintf("vlan %d", p.VlanID)}
+	if p.VlanName != "" {
+		vlanCmds = append(vlanCmds, fmt.Sprintf("name %s", p.VlanName))
+	}
+	steps = append(steps, vlanProvisionStep{
+		Action:   "create_vlan",
+		Commands: vlanCmds,
+	})
+
+	// Step 2: Create SVI with IP (if gateway provided)
+	if p.Gateway != "" && p.Netmask != "" {
+		prefix := netmaskToPrefixLen(p.Netmask)
+		sviCmds := []string{fmt.Sprintf("interface Vlan%d", p.VlanID)}
+		if p.VRF != "" {
+			sviCmds = append(sviCmds, fmt.Sprintf("vrf %s", p.VRF))
+		}
+		sviCmds = append(sviCmds, fmt.Sprintf("ip address %s/%d", p.Gateway, prefix), "no shutdown")
+		steps = append(steps, vlanProvisionStep{
+			Action:   "create_svi",
+			Commands: sviCmds,
+		})
+	}
+
+	// Save config
+	steps = append(steps, vlanProvisionStep{
+		Action:   "save_config",
+		Commands: []string{"end", "write memory"},
+	})
+
+	return steps
+}
+
+func generateNXOSVLANProvision(p *SwitchVLANProvisionPayload) []vlanProvisionStep {
+	var steps []vlanProvisionStep
+
+	// Step 1: Create VLAN
+	vlanCmds := []string{"configure terminal", fmt.Sprintf("vlan %d", p.VlanID)}
+	if p.VlanName != "" {
+		vlanCmds = append(vlanCmds, fmt.Sprintf("name %s", p.VlanName))
+	}
+	vlanCmds = append(vlanCmds, "exit")
+	steps = append(steps, vlanProvisionStep{
+		Action:   "create_vlan",
+		Commands: vlanCmds,
+	})
+
+	// Step 2: Create SVI with IP (if gateway provided)
+	if p.Gateway != "" && p.Netmask != "" {
+		sviCmds := []string{fmt.Sprintf("interface Vlan%d", p.VlanID)}
+		if p.VRF != "" {
+			sviCmds = append(sviCmds, fmt.Sprintf("vrf member %s", p.VRF))
+		}
+		sviCmds = append(sviCmds, fmt.Sprintf("ip address %s %s", p.Gateway, p.Netmask), "no shutdown", "exit")
+		steps = append(steps, vlanProvisionStep{
+			Action:   "create_svi",
+			Commands: sviCmds,
+		})
+	}
+
+	// Save config
+	steps = append(steps, vlanProvisionStep{
+		Action:   "save_config",
+		Commands: []string{"end", "copy running-config startup-config"},
+	})
+
+	return steps
+}
+
+func generateIOSVLANProvision(p *SwitchVLANProvisionPayload) []vlanProvisionStep {
+	var steps []vlanProvisionStep
+
+	// Step 1: Create VLAN
+	vlanCmds := []string{"configure terminal", fmt.Sprintf("vlan %d", p.VlanID)}
+	if p.VlanName != "" {
+		vlanCmds = append(vlanCmds, fmt.Sprintf("name %s", p.VlanName))
+	}
+	vlanCmds = append(vlanCmds, "exit")
+	steps = append(steps, vlanProvisionStep{
+		Action:   "create_vlan",
+		Commands: vlanCmds,
+	})
+
+	// Step 2: Create SVI with IP (if gateway provided)
+	if p.Gateway != "" && p.Netmask != "" {
+		sviCmds := []string{fmt.Sprintf("interface Vlan%d", p.VlanID)}
+		if p.VRF != "" {
+			sviCmds = append(sviCmds, fmt.Sprintf("vrf forwarding %s", p.VRF))
+		}
+		sviCmds = append(sviCmds, fmt.Sprintf("ip address %s %s", p.Gateway, p.Netmask), "no shutdown", "exit")
+		steps = append(steps, vlanProvisionStep{
+			Action:   "create_svi",
+			Commands: sviCmds,
+		})
+	}
+
+	// Save config
+	steps = append(steps, vlanProvisionStep{
+		Action:   "save_config",
+		Commands: []string{"end", "write memory"},
+	})
+
+	return steps
+}
+
+// netmaskToPrefixLen converts a dotted subnet mask to a prefix length.
+func netmaskToPrefixLen(mask string) int {
+	ip := net.ParseIP(mask)
+	if ip == nil {
+		return 24 // safe default
+	}
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return 24
+	}
+	ones, _ := net.IPv4Mask(ip4[0], ip4[1], ip4[2], ip4[3]).Size()
+	return ones
+}
+
 // normalizeVendor maps various vendor name forms to a canonical key.
 func normalizeVendor(vendor string) string {
 	switch strings.ToLower(strings.TrimSpace(vendor)) {

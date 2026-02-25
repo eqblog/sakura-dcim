@@ -24,6 +24,7 @@ import type {
   AuditLog,
   IPPool,
   IPAddress,
+  AssignResult,
   InventoryResult,
   DiscoverySession,
   DiscoveredServer,
@@ -273,8 +274,8 @@ export const ipPoolAPI = {
     client.put<APIResponse<IPAddress>>(`/ip-pools/${poolId}/addresses/${addrId}`, data),
   deleteAddress: (poolId: string, addrId: string) =>
     client.delete<APIResponse>(`/ip-pools/${poolId}/addresses/${addrId}`),
-  assignNext: (poolId: string, serverId: string) =>
-    client.post<APIResponse<IPAddress>>(`/ip-pools/${poolId}/assign`, { server_id: serverId }),
+  assignNext: (poolId: string, serverId: string, vlanAction?: string) =>
+    client.post<APIResponse<AssignResult>>(`/ip-pools/${poolId}/assign`, { server_id: serverId, vlan_action: vlanAction }),
   // Children (subdivision)
   listChildren: (poolId: string) =>
     client.get<APIResponse<IPPool[]>>(`/ip-pools/${poolId}/children`),
@@ -285,8 +286,8 @@ export const ipPoolAPI = {
     client.get<APIResponse<IPPool[]>>('/ip-pools/assignable'),
   listAddressesByServer: (serverId: string) =>
     client.get<APIResponse<IPAddress[]>>(`/ip-pools/by-server/${serverId}`),
-  autoAssign: (serverId: string, poolId?: string, vrf?: string) =>
-    client.post<APIResponse<IPAddress>>('/ip-pools/auto-assign', { server_id: serverId, pool_id: poolId, vrf }),
+  autoAssign: (serverId: string, poolId?: string, vrf?: string, vlanAction?: string) =>
+    client.post<APIResponse<AssignResult>>('/ip-pools/auto-assign', { server_id: serverId, pool_id: poolId, vrf, vlan_action: vlanAction }),
 };
 
 // Audit Logs

@@ -324,6 +324,21 @@ export interface IPAddress {
   note: string;
 }
 
+// VLAN Provisioning
+export type VLANActionMode = 'execute' | 'preview' | 'skip';
+
+export interface VLANProvisionStep {
+  action: string;
+  commands: string[];
+  status: string;
+  message?: string;
+}
+
+export interface AssignResult {
+  address: IPAddress;
+  vlan_steps?: VLANProvisionStep[];
+}
+
 // Server Inventory
 export interface ServerInventory {
   id: string;

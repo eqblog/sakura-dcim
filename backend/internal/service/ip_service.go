@@ -190,7 +190,7 @@ func (s *IPService) UpdateAddress(ctx context.Context, id uuid.UUID, req *domain
 	}
 	// Switch automation: provision when IP is newly assigned to a server
 	if addr.Status == "assigned" && addr.ServerID != nil && (oldStatus != "assigned" || oldServerID == nil) {
-		s.provisionServerPort(ctx, addr.PoolID, *addr.ServerID)
+		s.provisionServerPort(ctx, addr.PoolID, *addr.ServerID, domain.VLANActionExecute)
 	}
 
 	return s.addrRepo.GetByID(ctx, id)
@@ -206,7 +206,7 @@ func (s *IPService) DeleteAddress(ctx context.Context, id uuid.UUID) error {
 }
 
 // AssignNextAvailable assigns the next available IP from a pool to a server.
-func (s *IPService) AssignNextAvailable(ctx context.Context, poolID uuid.UUID, serverID uuid.UUID) (*domain.IPAddress, error) {
+func (s *IPService) AssignNextAvailable(ctx context.Context, poolID uuid.UUID, serverID uuid.UUID, vlanAction domain.VLANActionMode) (*domain.AssignResult, error) {
 	addr, err := s.addrRepo.GetNextAvailable(ctx, poolID)
 	if err != nil {
 		return nil, err
@@ -218,15 +218,15 @@ func (s *IPService) AssignNextAvailable(ctx context.Context, poolID uuid.UUID, s
 	}
 
 	// Switch automation: provision server's switch port with pool's VLAN config
-	s.provisionServerPort(ctx, poolID, serverID)
+	steps := s.provisionServerPort(ctx, poolID, serverID, vlanAction)
 
-	return addr, nil
+	return &domain.AssignResult{Address: addr, VLANSteps: steps}, nil
 }
 
 // AutoAssign assigns the next available IP to a server, optionally from a specific pool or filtered by VRF.
-func (s *IPService) AutoAssign(ctx context.Context, serverID uuid.UUID, poolID *uuid.UUID, vrf string) (*domain.IPAddress, error) {
+func (s *IPService) AutoAssign(ctx context.Context, serverID uuid.UUID, poolID *uuid.UUID, vrf string, vlanAction domain.VLANActionMode) (*domain.AssignResult, error) {
 	if poolID != nil {
-		return s.AssignNextAvailable(ctx, *poolID, serverID)
+		return s.AssignNextAvailable(ctx, *poolID, serverID, vlanAction)
 	}
 	pools, err := s.poolRepo.ListAllAssignable(ctx)
 	if err != nil {
@@ -236,24 +236,50 @@ func (s *IPService) AutoAssign(ctx context.Context, serverID uuid.UUID, poolID *
 		if vrf != "" && pool.VRF != vrf {
 			continue
 		}
-		return s.AssignNextAvailable(ctx, pool.ID, serverID)
+		return s.AssignNextAvailable(ctx, pool.ID, serverID, vlanAction)
 	}
 	return nil, fmt.Errorf("no available IP pool found")
 }
 
 // provisionServerPort configures the server's linked switch port based on the pool's VLAN settings.
-func (s *IPService) provisionServerPort(ctx context.Context, poolID uuid.UUID, serverID uuid.UUID) {
+// When vlanAction is "execute" or "preview", it also provisions VLAN infrastructure (VLAN, SVI, VRF).
+// Returns any VLAN provisioning steps that were executed or previewed.
+func (s *IPService) provisionServerPort(ctx context.Context, poolID uuid.UUID, serverID uuid.UUID, vlanAction domain.VLANActionMode) []domain.VLANProvisionStep {
 	if s.switchSvc == nil || s.portRepo == nil {
-		return
+		return nil
 	}
 	pool, err := s.poolRepo.GetByID(ctx, poolID)
 	if err != nil || !pool.SwitchAutomation {
-		return
+		return nil
 	}
 	ports, err := s.portRepo.GetByServerID(ctx, serverID)
 	if err != nil || len(ports) == 0 {
-		return
+		return nil
 	}
+
+	var allSteps []domain.VLANProvisionStep
+
+	// Phase 1: VLAN infrastructure provisioning (create VLAN, SVI, VRF)
+	if vlanAction != domain.VLANActionSkip && pool.VlanID > 0 {
+		for _, port := range ports {
+			result, err := s.switchSvc.ProvisionVLANInfra(ctx, port.SwitchID,
+				pool.VlanID, pool.Description, pool.Gateway, pool.Netmask, pool.VRF,
+				vlanAction == domain.VLANActionPreview)
+			if result != nil {
+				allSteps = append(allSteps, result.Steps...)
+			}
+			if err != nil {
+				// Log but continue — don't block port provisioning on VLAN infra failure
+				continue
+			}
+		}
+	}
+
+	// Phase 2: Port-level provisioning (skip on preview mode)
+	if vlanAction == domain.VLANActionPreview {
+		return allSteps
+	}
+
 	for _, port := range ports {
 		port.PortMode = pool.VlanMode
 		switch pool.VlanMode {
@@ -287,6 +313,8 @@ func (s *IPService) provisionServerPort(ctx context.Context, poolID uuid.UUID, s
 		_ = s.portRepo.Update(ctx, &port)
 		_ = s.switchSvc.ProvisionPort(ctx, port.SwitchID, port.ID)
 	}
+
+	return allSteps
 }
 
 // allocateVlanFromRange finds the next unused VLAN ID within the pool's range on the given switch.

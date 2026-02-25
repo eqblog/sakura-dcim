@@ -125,6 +125,36 @@ type VLANSummary struct {
 	Ports     []string `json:"ports"`
 }
 
+// VLANActionMode controls VLAN infrastructure provisioning behavior.
+type VLANActionMode string
+
+const (
+	VLANActionExecute VLANActionMode = "execute"
+	VLANActionPreview VLANActionMode = "preview" // dry-run: return commands without executing
+	VLANActionSkip    VLANActionMode = "skip"    // don't execute VLAN provisioning
+)
+
+// VLANProvisionStep describes one CLI operation for VLAN infrastructure.
+type VLANProvisionStep struct {
+	Action   string   `json:"action"`             // "create_vlan", "create_svi", "bind_vrf"
+	Commands []string `json:"commands"`            // CLI commands that would be / were executed
+	Status   string   `json:"status"`              // "pending", "ok", "skipped", "error"
+	Message  string   `json:"message,omitempty"`
+}
+
+// VLANProvisionResult is returned from the agent after VLAN provisioning.
+type VLANProvisionResult struct {
+	Steps  []VLANProvisionStep `json:"steps"`
+	DryRun bool                `json:"dry_run"`
+	Output string              `json:"output,omitempty"`
+}
+
+// AssignResult is returned from IP assignment operations, including VLAN provisioning steps.
+type AssignResult struct {
+	Address   *IPAddress          `json:"address"`
+	VLANSteps []VLANProvisionStep `json:"vlan_steps,omitempty"`
+}
+
 // PortTrafficSummary holds traffic totals for a single port.
 type PortTrafficSummary struct {
 	TrafficTodayIn  uint64 `json:"traffic_today_in"`

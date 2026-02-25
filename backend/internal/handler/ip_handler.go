@@ -252,7 +252,8 @@ func (h *IPHandler) AssignNextAvailable(c *gin.Context) {
 		return
 	}
 	var req struct {
-		ServerID string `json:"server_id" binding:"required"`
+		ServerID   string `json:"server_id" binding:"required"`
+		VLANAction string `json:"vlan_action"` // "execute", "preview", "skip" (default: "execute")
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
@@ -263,19 +264,21 @@ func (h *IPHandler) AssignNextAvailable(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: "invalid server_id"})
 		return
 	}
-	addr, err := h.svc.AssignNextAvailable(c.Request.Context(), poolID, serverID)
+	vlanAction := parseVLANAction(req.VLANAction)
+	result, err := h.svc.AssignNextAvailable(c.Request.Context(), poolID, serverID, vlanAction)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: addr})
+	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: result})
 }
 
 func (h *IPHandler) AutoAssign(c *gin.Context) {
 	var req struct {
-		ServerID string  `json:"server_id" binding:"required"`
-		PoolID   *string `json:"pool_id"`
-		VRF      string  `json:"vrf"`
+		ServerID   string  `json:"server_id" binding:"required"`
+		PoolID     *string `json:"pool_id"`
+		VRF        string  `json:"vrf"`
+		VLANAction string  `json:"vlan_action"` // "execute", "preview", "skip" (default: "execute")
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
@@ -295,10 +298,23 @@ func (h *IPHandler) AutoAssign(c *gin.Context) {
 		}
 		poolID = &pid
 	}
-	addr, err := h.svc.AutoAssign(c.Request.Context(), serverID, poolID, req.VRF)
+	vlanAction := parseVLANAction(req.VLANAction)
+	result, err := h.svc.AutoAssign(c.Request.Context(), serverID, poolID, req.VRF, vlanAction)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: addr})
+	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: result})
+}
+
+// parseVLANAction converts a string to VLANActionMode, defaulting to "execute".
+func parseVLANAction(s string) domain.VLANActionMode {
+	switch s {
+	case "preview":
+		return domain.VLANActionPreview
+	case "skip":
+		return domain.VLANActionSkip
+	default:
+		return domain.VLANActionExecute
+	}
 }

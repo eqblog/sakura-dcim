@@ -521,3 +521,40 @@ func (s *SwitchService) ConfigureDHCPRelay(ctx context.Context, switchID uuid.UU
 	}
 	return nil
 }
+
+// ProvisionVLANInfra creates VLAN, SVI, and VRF binding on a switch via the agent.
+func (s *SwitchService) ProvisionVLANInfra(ctx context.Context, switchID uuid.UUID, vlanID int, vlanName, gateway, netmask, vrf string, dryRun bool) (*domain.VLANProvisionResult, error) {
+	sw, err := s.switchRepo.GetByID(ctx, switchID)
+	if err != nil {
+		return nil, fmt.Errorf("switch not found: %w", err)
+	}
+
+	payload := map[string]any{
+		"switch_ip": sw.IP,
+		"ssh_user":  sw.SSHUser,
+		"ssh_pass":  sw.SSHPass,
+		"ssh_port":  sw.SSHPort,
+		"vendor":    sw.Vendor,
+		"vlan_id":   vlanID,
+		"vlan_name": vlanName,
+		"gateway":   gateway,
+		"netmask":   netmask,
+		"vrf":       vrf,
+		"dry_run":   dryRun,
+	}
+
+	resp, err := s.hub.SendRequest(sw.AgentID, ws.ActionSwitchVLANProvision, payload, 30*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("agent request failed: %w", err)
+	}
+	if resp.Error != "" {
+		return nil, fmt.Errorf("agent error: %s", resp.Error)
+	}
+
+	raw, _ := json.Marshal(resp.Payload)
+	var result domain.VLANProvisionResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse VLAN provision result: %w", err)
+	}
+	return &result, nil
+}

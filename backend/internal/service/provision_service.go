@@ -114,21 +114,21 @@ func (s *ProvisionService) Provision(ctx context.Context, serverID uuid.UUID, re
 	// 3. Assign IP if server doesn't already have one
 	addrs, _ := s.ipSvc.ListAddressesByServer(ctx, serverID)
 	if len(addrs) == 0 {
-		assignedAddr, err := s.ipSvc.AutoAssign(ctx, serverID, req.PoolID, req.VRF)
+		assignResult, err := s.ipSvc.AutoAssign(ctx, serverID, req.PoolID, req.VRF, domain.VLANActionExecute)
 		if err != nil {
 			_ = s.serverRepo.UpdateStatus(ctx, serverID, domain.ServerStatusError)
 			return nil, fmt.Errorf("IP assignment failed: %w", err)
 		}
 
 		// Update server's primary_ip field
-		server.PrimaryIP = assignedAddr.Address
+		server.PrimaryIP = assignResult.Address.Address
 		if err := s.serverRepo.Update(ctx, server); err != nil {
 			s.logger.Warn("failed to update server primary_ip", zap.Error(err))
 		}
 
 		s.logger.Info("IP assigned during provisioning",
 			zap.String("server_id", serverID.String()),
-			zap.String("ip", assignedAddr.Address),
+			zap.String("ip", assignResult.Address.Address),
 		)
 	}
 
