@@ -66,7 +66,8 @@ func AutoRAIDLevel(diskCount int) string {
 }
 
 // StartReinstall initiates an OS reinstallation for a server.
-func (s *ReinstallService) StartReinstall(ctx context.Context, serverID uuid.UUID, req *domain.ReinstallRequest) (*domain.InstallTask, error) {
+// netCfg is optional — when provided, gateway/netmask/DNS are injected into the template and PXE payload.
+func (s *ReinstallService) StartReinstall(ctx context.Context, serverID uuid.UUID, req *domain.ReinstallRequest, netCfg *domain.NetworkConfig) (*domain.InstallTask, error) {
 	server, err := s.serverRepo.GetByID(ctx, serverID)
 	if err != nil {
 		return nil, fmt.Errorf("server not found: %w", err)
@@ -133,7 +134,7 @@ func (s *ReinstallService) StartReinstall(ctx context.Context, serverID uuid.UUI
 	_ = s.serverRepo.UpdateStatus(ctx, serverID, domain.ServerStatusReinstalling)
 
 	// Render preseed/kickstart template
-	renderedTemplate, err := s.renderTemplate(osProfile, server, req)
+	renderedTemplate, err := s.renderTemplate(osProfile, server, req, netCfg)
 	if err != nil {
 		s.logger.Warn("failed to render template", zap.Error(err))
 	}
@@ -151,7 +152,7 @@ func (s *ReinstallService) StartReinstall(ctx context.Context, serverID uuid.UUI
 	pxePayload := map[string]interface{}{
 		"task_id":      task.ID.String(),
 		"server_id":    serverID.String(),
-		"server_mac":   "", // TODO: from inventory
+		"server_mac":   server.MACAddress,
 		"server_ip":    server.PrimaryIP,
 		"kernel_url":   osProfile.KernelURL,
 		"initrd_url":   osProfile.InitrdURL,
@@ -162,6 +163,14 @@ func (s *ReinstallService) StartReinstall(ctx context.Context, serverID uuid.UUI
 		"ipmi_user":    ipmiUser,
 		"ipmi_pass":    ipmiPass,
 		"ssh_keys":     req.SSHKeys,
+		"gateway":      "",
+		"netmask":      "",
+		"nameservers":  []string{},
+	}
+	if netCfg != nil {
+		pxePayload["gateway"] = netCfg.Gateway
+		pxePayload["netmask"] = netCfg.Netmask
+		pxePayload["nameservers"] = netCfg.Nameservers
 	}
 
 	go func() {
@@ -259,6 +268,7 @@ func (s *ReinstallService) HandlePXEStatusEvent(agentID uuid.UUID, msg *ws.Messa
 	// Update server status on completion/failure
 	if status == domain.InstallStatusCompleted {
 		_ = s.serverRepo.UpdateStatus(context.Background(), serverID, domain.ServerStatusActive)
+		go s.cleanupPXE(serverID)
 	} else if status == domain.InstallStatusFailed {
 		_ = s.serverRepo.UpdateStatus(context.Background(), serverID, domain.ServerStatusError)
 	}
@@ -270,8 +280,24 @@ func (s *ReinstallService) HandlePXEStatusEvent(agentID uuid.UUID, msg *ws.Messa
 	)
 }
 
+// cleanupPXE sends a PXE cleanup command to the agent after install completion.
+func (s *ReinstallService) cleanupPXE(serverID uuid.UUID) {
+	server, err := s.serverRepo.GetByID(context.Background(), serverID)
+	if err != nil || server.AgentID == nil {
+		return
+	}
+	payload := map[string]interface{}{
+		"server_id":  serverID.String(),
+		"server_mac": server.MACAddress,
+	}
+	_, err = s.hub.SendRequest(*server.AgentID, ws.ActionPXECleanup, payload, 30*time.Second)
+	if err != nil {
+		s.logger.Warn("PXE cleanup failed", zap.Error(err), zap.String("server_id", serverID.String()))
+	}
+}
+
 // renderTemplate renders a Kickstart/Preseed/cloud-init template with server variables.
-func (s *ReinstallService) renderTemplate(profile *domain.OSProfile, server *domain.Server, req *domain.ReinstallRequest) (string, error) {
+func (s *ReinstallService) renderTemplate(profile *domain.OSProfile, server *domain.Server, req *domain.ReinstallRequest, netCfg *domain.NetworkConfig) (string, error) {
 	if profile.Template == "" {
 		return "", nil
 	}
@@ -287,6 +313,15 @@ func (s *ReinstallService) renderTemplate(profile *domain.OSProfile, server *dom
 		"RootPassword": req.RootPassword,
 		"SSHKeys":      req.SSHKeys,
 		"RAIDLevel":    req.RAIDLevel,
+		"MACAddress":   server.MACAddress,
+		"Gateway":      "",
+		"Netmask":      "",
+		"Nameservers":  []string{},
+	}
+	if netCfg != nil {
+		data["Gateway"] = netCfg.Gateway
+		data["Netmask"] = netCfg.Netmask
+		data["Nameservers"] = netCfg.Nameservers
 	}
 
 	var buf bytes.Buffer

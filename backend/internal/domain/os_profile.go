@@ -76,3 +76,21 @@ type ReinstallRequest struct {
 	RootPassword string     `json:"root_password" binding:"required,min=8"`
 	SSHKeys      []string   `json:"ssh_keys"`
 }
+
+// ProvisionRequest is the API payload for the full provisioning orchestration.
+type ProvisionRequest struct {
+	PoolID       *uuid.UUID `json:"pool_id"`
+	VRF          string     `json:"vrf"`
+	OSProfileID  uuid.UUID  `json:"os_profile_id" binding:"required"`
+	DiskLayoutID *uuid.UUID `json:"disk_layout_id"`
+	RAIDLevel    string     `json:"raid_level"`
+	RootPassword string     `json:"root_password" binding:"required,min=8"`
+	SSHKeys      []string   `json:"ssh_keys"`
+}
+
+// NetworkConfig holds network parameters resolved from the IP pool.
+type NetworkConfig struct {
+	Gateway     string   `json:"gateway"`
+	Netmask     string   `json:"netmask"`
+	Nameservers []string `json:"nameservers"`
+}

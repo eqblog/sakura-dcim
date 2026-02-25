@@ -72,6 +72,25 @@ func (r *SwitchPortRepo) Update(ctx context.Context, port *domain.SwitchPort) er
 	return err
 }
 
+func (r *SwitchPortRepo) ListUsedVlanIDs(ctx context.Context, switchID uuid.UUID, rangeStart, rangeEnd int) ([]int, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT DISTINCT vlan_id FROM switch_ports WHERE switch_id = $1 AND vlan_id BETWEEN $2 AND $3`,
+		switchID, rangeStart, rangeEnd)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var vlans []int
+	for rows.Next() {
+		var v int
+		if err := rows.Scan(&v); err != nil {
+			return nil, err
+		}
+		vlans = append(vlans, v)
+	}
+	return vlans, rows.Err()
+}
+
 func (r *SwitchPortRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	_, err := r.db.Exec(ctx, `DELETE FROM switch_ports WHERE id = $1`, id)
 	return err

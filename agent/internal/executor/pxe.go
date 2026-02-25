@@ -28,19 +28,22 @@ func NewPXEExecutor(logger *zap.Logger) *PXEExecutor {
 }
 
 type PXEPreparePayload struct {
-	TaskID    string   `json:"task_id"`
-	ServerID  string   `json:"server_id"`
-	ServerMAC string   `json:"server_mac"`
-	ServerIP  string   `json:"server_ip"`
-	KernelURL string   `json:"kernel_url"`
-	InitrdURL string   `json:"initrd_url"`
-	BootArgs  string   `json:"boot_args"`
-	Template  string   `json:"template"`
-	RAIDLevel string   `json:"raid_level"`
-	IPMIIP    string   `json:"ipmi_ip"`
-	IPMIUser  string   `json:"ipmi_user"`
-	IPMIPass  string   `json:"ipmi_pass"`
-	SSHKeys   []string `json:"ssh_keys"`
+	TaskID      string   `json:"task_id"`
+	ServerID    string   `json:"server_id"`
+	ServerMAC   string   `json:"server_mac"`
+	ServerIP    string   `json:"server_ip"`
+	KernelURL   string   `json:"kernel_url"`
+	InitrdURL   string   `json:"initrd_url"`
+	BootArgs    string   `json:"boot_args"`
+	Template    string   `json:"template"`
+	RAIDLevel   string   `json:"raid_level"`
+	IPMIIP      string   `json:"ipmi_ip"`
+	IPMIUser    string   `json:"ipmi_user"`
+	IPMIPass    string   `json:"ipmi_pass"`
+	SSHKeys     []string `json:"ssh_keys"`
+	Gateway     string   `json:"gateway"`
+	Netmask     string   `json:"netmask"`
+	Nameservers []string `json:"nameservers"`
 }
 
 type PXECleanupPayload struct {
@@ -101,11 +104,21 @@ func (e *PXEExecutor) HandlePXEPrepare(raw json.RawMessage) (interface{}, error)
 		return nil, fmt.Errorf("write pxe config: %w", err)
 	}
 
-	// Write dnsmasq host config for DHCP reservation
+	// Write dnsmasq host config for DHCP reservation with network options
 	if p.ServerMAC != "" && p.ServerIP != "" {
-		dnsmasqConf := fmt.Sprintf("dhcp-host=%s,%s,set:pxe-%s\n", p.ServerMAC, p.ServerIP, p.ServerID)
+		tag := fmt.Sprintf("pxe-%s", p.ServerID)
+		conf := fmt.Sprintf("dhcp-host=%s,%s,set:%s\n", p.ServerMAC, p.ServerIP, tag)
+		if p.Gateway != "" {
+			conf += fmt.Sprintf("dhcp-option=tag:%s,3,%s\n", tag, p.Gateway)
+		}
+		if p.Netmask != "" {
+			conf += fmt.Sprintf("dhcp-option=tag:%s,1,%s\n", tag, p.Netmask)
+		}
+		if len(p.Nameservers) > 0 {
+			conf += fmt.Sprintf("dhcp-option=tag:%s,6,%s\n", tag, strings.Join(p.Nameservers, ","))
+		}
 		confPath := filepath.Join(e.confDir, fmt.Sprintf("pxe-%s.conf", p.ServerID))
-		if err := os.WriteFile(confPath, []byte(dnsmasqConf), 0644); err != nil {
+		if err := os.WriteFile(confPath, []byte(conf), 0644); err != nil {
 			e.logger.Warn("failed to write dnsmasq config", zap.Error(err))
 		}
 	}

@@ -1,8 +1,10 @@
 package executor
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os/exec"
 	"regexp"
@@ -198,6 +200,7 @@ func (e *SNMPExecutor) pollPortVLANs(version, community, switchIP string) map[in
 }
 
 // pollVLANsViaSSH discovers VLAN-to-port mappings by SSHing into the switch and running CLI commands.
+// Uses an interactive shell with PTY to send "terminal length 0" first, avoiding pagination.
 // Returns ifIndex → VLAN ID mapping using port names from SNMP ifDescr to match.
 func (e *SNMPExecutor) pollVLANsViaSSH(host string, port int, user, pass, vendor string, ifDescrMap map[int]string) map[int]int {
 	if port == 0 {
@@ -219,32 +222,33 @@ func (e *SNMPExecutor) pollVLANsViaSSH(host string, port int, user, pass, vendor
 	}
 	defer client.Close()
 
-	session, err := client.NewSession()
-	if err != nil {
-		e.logger.Warn("SSH VLAN fallback: session failed", zap.Error(err))
-		return nil
-	}
-	defer session.Close()
-
-	// Choose command based on vendor
-	cmd := "show vlan brief"
+	// Choose commands based on vendor
+	disablePager := "terminal length 0"
+	showCmd := "show vlan brief"
 	switch vendor {
 	case "juniper":
-		cmd = "show vlans brief"
+		disablePager = "set cli screen-length 0"
+		showCmd = "show vlans brief"
 	case "sonic":
-		cmd = "show vlan brief"
+		disablePager = ""
+		showCmd = "show vlan brief"
 	case "cumulus":
-		cmd = "net show bridge vlan"
+		disablePager = ""
+		showCmd = "net show bridge vlan"
+	case "huawei":
+		disablePager = "screen-length 0 temporary"
+		showCmd = "display vlan brief"
 	}
 
-	out, err := session.CombinedOutput(cmd)
+	output, err := e.sshShellExec(client, disablePager, showCmd)
 	if err != nil {
-		e.logger.Warn("SSH VLAN fallback: command failed", zap.String("cmd", cmd), zap.Error(err))
+		e.logger.Warn("SSH VLAN fallback: shell exec failed", zap.Error(err))
 		return nil
 	}
 
-	output := string(out)
-	e.logger.Info("SSH VLAN fallback: got output", zap.Int("bytes", len(output)))
+	e.logger.Info("SSH VLAN fallback: got output",
+		zap.Int("bytes", len(output)),
+		zap.Int("lines", len(strings.Split(output, "\n"))))
 
 	// Build reverse map: normalized port name → ifIndex
 	nameToIfIndex := make(map[string]int)
@@ -256,27 +260,118 @@ func (e *SNMPExecutor) pollVLANsViaSSH(host string, port int, user, pass, vendor
 	return parseShowVlanBrief(output, nameToIfIndex, e.logger)
 }
 
+// sshShellExec opens an interactive shell session with a PTY, sends "terminal length 0"
+// to disable pagination, then runs the show command and collects the full output.
+func (e *SNMPExecutor) sshShellExec(client *ssh.Client, disablePager, showCmd string) (string, error) {
+	session, err := client.NewSession()
+	if err != nil {
+		return "", fmt.Errorf("session: %w", err)
+	}
+	defer session.Close()
+
+	// Request PTY so the switch treats this as an interactive session
+	if err := session.RequestPty("xterm", 24, 512, ssh.TerminalModes{
+		ssh.ECHO: 0,
+	}); err != nil {
+		return "", fmt.Errorf("pty: %w", err)
+	}
+
+	stdin, err := session.StdinPipe()
+	if err != nil {
+		return "", fmt.Errorf("stdin: %w", err)
+	}
+	stdout, err := session.StdoutPipe()
+	if err != nil {
+		return "", fmt.Errorf("stdout: %w", err)
+	}
+
+	if err := session.Shell(); err != nil {
+		return "", fmt.Errorf("shell: %w", err)
+	}
+
+	// Wait for initial prompt
+	time.Sleep(1 * time.Second)
+
+	// Disable pagination
+	if disablePager != "" {
+		fmt.Fprintf(stdin, "%s\n", disablePager)
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	// Use a unique marker to know when the output is done
+	marker := "###END_OF_OUTPUT###"
+	fmt.Fprintf(stdin, "%s\n", showCmd)
+	time.Sleep(500 * time.Millisecond)
+	fmt.Fprintf(stdin, "echo %s\n", marker)
+	// Also try just printing the marker for non-Linux switches
+	fmt.Fprintf(stdin, "\n")
+	time.Sleep(500 * time.Millisecond)
+
+	// Send exit to close the shell
+	fmt.Fprintf(stdin, "exit\n")
+	stdin.Close()
+
+	// Read all output with a timeout
+	var buf bytes.Buffer
+	done := make(chan struct{})
+	go func() {
+		io.Copy(&buf, stdout)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(15 * time.Second):
+		e.logger.Debug("SSH shell read timed out, using partial output")
+	}
+
+	// Wait for session to finish (ignore error from exit)
+	_ = session.Wait()
+
+	return buf.String(), nil
+}
+
 // parseShowVlanBrief parses "show vlan brief" output and maps ports to VLAN IDs.
-// Format (Cisco NX-OS / IOS):
+// Handles Cisco NX-OS / IOS / Arista format:
 //
 //	VLAN Name                             Status    Ports
 //	---- -------------------------------- --------- -------------------------------
 //	1    default                          active    Eth1/1, Eth1/2
 //	100  Production                       active    Eth1/3, Eth1/4
+//	200  Development                      act/unsup
+//
+// Matches any VLAN status (active, act/unsup, act/lshut, suspend, etc.)
 func parseShowVlanBrief(output string, nameToIfIndex map[string]int, logger *zap.Logger) map[int]int {
 	result := make(map[int]int)
-	// Match lines: VLAN_ID  name  status  ports...
-	// The VLAN ID is at the start, ports are comma-separated at the end
-	vlanLineRe := regexp.MustCompile(`^\s*(\d+)\s+\S+\s+active\s+(.+)$`)
-	// Continuation lines (ports that overflow to next line, indented)
-	contLineRe := regexp.MustCompile(`^\s{20,}(.+)$`)
+
+	// Match VLAN lines: VLAN_ID  name  status  [optional ports...]
+	// Status can be: active, act/unsup, act/lshut, suspend, etc.
+	vlanLineRe := regexp.MustCompile(`^\s*(\d+)\s+\S+\s+(?:active|act/\S+|suspend)\s*(.*)$`)
+
+	// Continuation lines: heavily indented lines with port names
+	contLineRe := regexp.MustCompile(`^\s{10,}(\S.*)$`)
+
+	// Skip non-data lines (headers, separators, prompts, blank)
+	skipLineRe := regexp.MustCompile(`^[\s-]*$|^VLAN\s+Name|^----`)
 
 	var currentVlan int
+	matchedVlans := 0
 	for _, line := range strings.Split(output, "\n") {
+		// Strip ANSI escape codes and carriage returns
+		line = stripANSI(line)
+		line = strings.TrimRight(line, "\r")
+
+		if skipLineRe.MatchString(line) {
+			continue
+		}
+
 		if m := vlanLineRe.FindStringSubmatch(line); m != nil {
 			vid, _ := strconv.Atoi(m[1])
 			currentVlan = vid
-			mapPortsToVlan(m[2], vid, nameToIfIndex, result)
+			matchedVlans++
+			if ports := strings.TrimSpace(m[2]); ports != "" {
+				mapPortsToVlan(ports, vid, nameToIfIndex, result)
+			}
 		} else if currentVlan > 0 {
 			if m := contLineRe.FindStringSubmatch(line); m != nil {
 				mapPortsToVlan(m[1], currentVlan, nameToIfIndex, result)
@@ -286,10 +381,16 @@ func parseShowVlanBrief(output string, nameToIfIndex map[string]int, logger *zap
 		}
 	}
 
-	if len(result) > 0 {
-		logger.Info("polled port VLANs via SSH show vlan brief", zap.Int("count", len(result)))
-	}
+	logger.Info("parsed show vlan brief",
+		zap.Int("vlans_found", matchedVlans),
+		zap.Int("port_mappings", len(result)))
 	return result
+}
+
+// stripANSI removes ANSI escape sequences from a string (common in PTY output).
+func stripANSI(s string) string {
+	ansiRe := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+	return ansiRe.ReplaceAllString(s, "")
 }
 
 // mapPortsToVlan parses a comma-separated port list and maps each to the VLAN ID.

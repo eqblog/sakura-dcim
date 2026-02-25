@@ -106,6 +106,8 @@ type IPPoolRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.IPPool, error)
 	List(ctx context.Context, tenantID *uuid.UUID) ([]domain.IPPool, error)
 	ListByParentID(ctx context.Context, parentID uuid.UUID) ([]domain.IPPool, error)
+	ListAllAssignable(ctx context.Context) ([]domain.IPPool, error)
+	ExistsByNetwork(ctx context.Context, network string, parentID *uuid.UUID) (bool, error)
 	Update(ctx context.Context, pool *domain.IPPool) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
@@ -133,6 +135,7 @@ type SwitchPortRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.SwitchPort, error)
 	ListBySwitchID(ctx context.Context, switchID uuid.UUID) ([]domain.SwitchPort, error)
 	GetByServerID(ctx context.Context, serverID uuid.UUID) ([]domain.SwitchPort, error)
+	ListUsedVlanIDs(ctx context.Context, switchID uuid.UUID, rangeStart, rangeEnd int) ([]int, error)
 	Update(ctx context.Context, port *domain.SwitchPort) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	UpsertBySwitchAndIndex(ctx context.Context, port *domain.SwitchPort) error

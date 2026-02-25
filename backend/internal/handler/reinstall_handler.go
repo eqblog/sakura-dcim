@@ -37,7 +37,7 @@ func (h *ReinstallHandler) StartReinstall(c *gin.Context) {
 		return
 	}
 
-	task, err := h.svc.StartReinstall(c.Request.Context(), serverID, &req)
+	task, err := h.svc.StartReinstall(c.Request.Context(), serverID, &req, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: err.Error()})
 		return

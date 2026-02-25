@@ -15,6 +15,7 @@ import type {
   Script,
   InstallTask,
   ReinstallRequest,
+  PreflightResult,
   Switch,
   SwitchPort,
   BandwidthSummary,
@@ -184,6 +185,14 @@ export const reinstallAPI = {
     client.get<APIResponse<InstallTask>>(`/servers/${serverId}/reinstall/status`),
 };
 
+// Provisioning (full flow: IP + switch + PXE)
+export const provisionAPI = {
+  preflight: (serverId: string) =>
+    client.get<APIResponse<PreflightResult>>(`/servers/${serverId}/provision/preflight`),
+  start: (serverId: string, data: any) =>
+    client.post<APIResponse<InstallTask>>(`/servers/${serverId}/provision`, data),
+};
+
 // Switches
 export const switchAPI = {
   list: () =>
@@ -271,6 +280,13 @@ export const ipPoolAPI = {
     client.get<APIResponse<IPPool[]>>(`/ip-pools/${poolId}/children`),
   generateIPs: (poolId: string, reserveGateway: boolean) =>
     client.post<APIResponse>(`/ip-pools/${poolId}/generate`, { reserve_gateway: reserveGateway }),
+  // Enhanced assignment
+  listAssignable: () =>
+    client.get<APIResponse<IPPool[]>>('/ip-pools/assignable'),
+  listAddressesByServer: (serverId: string) =>
+    client.get<APIResponse<IPAddress[]>>(`/ip-pools/by-server/${serverId}`),
+  autoAssign: (serverId: string, poolId?: string, vrf?: string) =>
+    client.post<APIResponse<IPAddress>>('/ip-pools/auto-assign', { server_id: serverId, pool_id: poolId, vrf }),
 };
 
 // Audit Logs

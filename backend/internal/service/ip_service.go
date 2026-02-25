@@ -39,6 +39,10 @@ func (s *IPService) ListChildPools(ctx context.Context, parentID uuid.UUID) ([]d
 	return s.poolRepo.ListByParentID(ctx, parentID)
 }
 
+func (s *IPService) ListAllAssignablePools(ctx context.Context) ([]domain.IPPool, error) {
+	return s.poolRepo.ListAllAssignable(ctx)
+}
+
 func (s *IPService) GetPool(ctx context.Context, id uuid.UUID) (*domain.IPPool, error) {
 	return s.poolRepo.GetByID(ctx, id)
 }
@@ -46,6 +50,15 @@ func (s *IPService) GetPool(ctx context.Context, id uuid.UUID) (*domain.IPPool, 
 func (s *IPService) CreatePool(ctx context.Context, pool *domain.IPPool) (*domain.IPPool, error) {
 	if pool.PoolType == "" {
 		pool.PoolType = "ip_pool"
+	}
+	if pool.VlanAllocation == "" {
+		pool.VlanAllocation = "fixed"
+	}
+
+	// Check for duplicate CIDR at the same parent level
+	exists, err := s.poolRepo.ExistsByNetwork(ctx, pool.Network, pool.ParentID)
+	if err == nil && exists {
+		return nil, fmt.Errorf("a pool with network %s already exists at this level", pool.Network)
 	}
 
 	// Validate child CIDR is within parent
@@ -210,6 +223,24 @@ func (s *IPService) AssignNextAvailable(ctx context.Context, poolID uuid.UUID, s
 	return addr, nil
 }
 
+// AutoAssign assigns the next available IP to a server, optionally from a specific pool or filtered by VRF.
+func (s *IPService) AutoAssign(ctx context.Context, serverID uuid.UUID, poolID *uuid.UUID, vrf string) (*domain.IPAddress, error) {
+	if poolID != nil {
+		return s.AssignNextAvailable(ctx, *poolID, serverID)
+	}
+	pools, err := s.poolRepo.ListAllAssignable(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list assignable pools: %w", err)
+	}
+	for _, pool := range pools {
+		if vrf != "" && pool.VRF != vrf {
+			continue
+		}
+		return s.AssignNextAvailable(ctx, pool.ID, serverID)
+	}
+	return nil, fmt.Errorf("no available IP pool found")
+}
+
 // provisionServerPort configures the server's linked switch port based on the pool's VLAN settings.
 func (s *IPService) provisionServerPort(ctx context.Context, poolID uuid.UUID, serverID uuid.UUID) {
 	if s.switchSvc == nil || s.portRepo == nil {
@@ -227,11 +258,25 @@ func (s *IPService) provisionServerPort(ctx context.Context, poolID uuid.UUID, s
 		port.PortMode = pool.VlanMode
 		switch pool.VlanMode {
 		case "access":
-			port.VlanID = pool.VlanID
+			if pool.VlanAllocation == "auto_range" {
+				vid := s.allocateVlanFromRange(ctx, pool, port.SwitchID)
+				if vid > 0 {
+					port.VlanID = vid
+				}
+			} else {
+				port.VlanID = pool.VlanID
+			}
 			port.NativeVlanID = 0
 			port.TrunkVlans = ""
 		case "trunk_native":
-			port.NativeVlanID = pool.NativeVlanID
+			if pool.VlanAllocation == "auto_range" {
+				vid := s.allocateVlanFromRange(ctx, pool, port.SwitchID)
+				if vid > 0 {
+					port.NativeVlanID = vid
+				}
+			} else {
+				port.NativeVlanID = pool.NativeVlanID
+			}
 			port.TrunkVlans = pool.TrunkVlans
 			port.VlanID = 0
 		case "trunk":
@@ -242,6 +287,27 @@ func (s *IPService) provisionServerPort(ctx context.Context, poolID uuid.UUID, s
 		_ = s.portRepo.Update(ctx, &port)
 		_ = s.switchSvc.ProvisionPort(ctx, port.SwitchID, port.ID)
 	}
+}
+
+// allocateVlanFromRange finds the next unused VLAN ID within the pool's range on the given switch.
+func (s *IPService) allocateVlanFromRange(ctx context.Context, pool *domain.IPPool, switchID uuid.UUID) int {
+	if pool.VlanRangeStart <= 0 || pool.VlanRangeEnd <= 0 || pool.VlanRangeStart > pool.VlanRangeEnd {
+		return 0
+	}
+	usedVlans, err := s.portRepo.ListUsedVlanIDs(ctx, switchID, pool.VlanRangeStart, pool.VlanRangeEnd)
+	if err != nil {
+		return 0
+	}
+	usedSet := make(map[int]bool, len(usedVlans))
+	for _, v := range usedVlans {
+		usedSet[v] = true
+	}
+	for vid := pool.VlanRangeStart; vid <= pool.VlanRangeEnd; vid++ {
+		if !usedSet[vid] {
+			return vid
+		}
+	}
+	return 0
 }
 
 // unprovisionServerPort reverts the server's linked switch port to default access mode.
@@ -265,6 +331,24 @@ func (s *IPService) unprovisionServerPort(ctx context.Context, poolID uuid.UUID,
 		_ = s.portRepo.Update(ctx, &port)
 		_ = s.switchSvc.ProvisionPort(ctx, port.SwitchID, port.ID)
 	}
+}
+
+// GetNetworkConfigForServer resolves gateway, netmask, and nameservers from
+// the pool of the server's first assigned IP address.
+func (s *IPService) GetNetworkConfigForServer(ctx context.Context, serverID uuid.UUID) (*domain.NetworkConfig, error) {
+	addrs, err := s.addrRepo.ListByServerID(ctx, serverID)
+	if err != nil || len(addrs) == 0 {
+		return nil, fmt.Errorf("no IP assigned to server")
+	}
+	pool, err := s.poolRepo.GetByID(ctx, addrs[0].PoolID)
+	if err != nil {
+		return nil, fmt.Errorf("pool not found: %w", err)
+	}
+	return &domain.NetworkConfig{
+		Gateway:     pool.Gateway,
+		Netmask:     pool.Netmask,
+		Nameservers: pool.Nameservers,
+	}, nil
 }
 
 // cidrContains checks if childCIDR is fully within parentCIDR.

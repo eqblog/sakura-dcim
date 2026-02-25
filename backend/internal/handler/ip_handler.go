@@ -23,6 +23,12 @@ func (h *IPHandler) RegisterRoutes(r *gin.RouterGroup) {
 	{
 		g.GET("", h.ListPools)
 		g.POST("", h.CreatePool)
+
+		// Static routes BEFORE /:id to avoid conflict
+		g.GET("/assignable", h.ListAssignablePools)
+		g.POST("/auto-assign", h.AutoAssign)
+		g.GET("/by-server/:serverId", h.ListAddressesByServer)
+
 		g.GET("/:id", h.GetPool)
 		g.PUT("/:id", h.UpdatePool)
 		g.DELETE("/:id", h.DeletePool)
@@ -46,6 +52,15 @@ func (h *IPHandler) ListPools(c *gin.Context) {
 	pools, err := h.svc.ListPools(c.Request.Context(), nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: "failed to list pools"})
+		return
+	}
+	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: pools})
+}
+
+func (h *IPHandler) ListAssignablePools(c *gin.Context) {
+	pools, err := h.svc.ListAllAssignablePools(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: "failed to list assignable pools"})
 		return
 	}
 	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: pools})
@@ -127,6 +142,20 @@ func (h *IPHandler) ListAddresses(c *gin.Context) {
 		return
 	}
 	addrs, err := h.svc.ListAddresses(c.Request.Context(), poolID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: "failed to list addresses"})
+		return
+	}
+	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: addrs})
+}
+
+func (h *IPHandler) ListAddressesByServer(c *gin.Context) {
+	serverID, err := uuid.Parse(c.Param("serverId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: "invalid server ID"})
+		return
+	}
+	addrs, err := h.svc.ListAddressesByServer(c.Request.Context(), serverID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: "failed to list addresses"})
 		return
@@ -235,6 +264,38 @@ func (h *IPHandler) AssignNextAvailable(c *gin.Context) {
 		return
 	}
 	addr, err := h.svc.AssignNextAvailable(c.Request.Context(), poolID, serverID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: addr})
+}
+
+func (h *IPHandler) AutoAssign(c *gin.Context) {
+	var req struct {
+		ServerID string  `json:"server_id" binding:"required"`
+		PoolID   *string `json:"pool_id"`
+		VRF      string  `json:"vrf"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
+		return
+	}
+	serverID, err := uuid.Parse(req.ServerID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: "invalid server_id"})
+		return
+	}
+	var poolID *uuid.UUID
+	if req.PoolID != nil && *req.PoolID != "" {
+		pid, err := uuid.Parse(*req.PoolID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: "invalid pool_id"})
+			return
+		}
+		poolID = &pid
+	}
+	addr, err := h.svc.AutoAssign(c.Request.Context(), serverID, poolID, req.VRF)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: err.Error()})
 		return

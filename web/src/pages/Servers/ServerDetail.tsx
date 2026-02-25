@@ -13,6 +13,7 @@ import BandwidthTab from './tabs/BandwidthTab';
 import NetworkTab from './tabs/NetworkTab';
 import InventoryTab from './tabs/InventoryTab';
 import IPTab from './tabs/IPTab';
+import ProvisionTab from './tabs/ProvisionTab';
 
 const { Title } = Typography;
 
@@ -86,6 +87,7 @@ const ServerDetailPage: React.FC = () => {
     { key: 'power', label: 'Power', children: <PowerTab serverId={server.id} /> },
     { key: 'sensors', label: 'Sensors', children: <SensorsTab serverId={server.id} /> },
     { key: 'kvm', label: 'KVM', children: <KvmTab serverId={server.id} /> },
+    { key: 'provision', label: 'Provision', children: <ProvisionTab serverId={server.id} server={server} /> },
     { key: 'reinstall', label: 'Reinstall', children: <ReinstallTab serverId={server.id} /> },
     { key: 'bandwidth', label: 'Bandwidth', children: <BandwidthTab serverId={server.id} /> },
     { key: 'network', label: 'Network', children: <NetworkTab serverId={server.id} /> },

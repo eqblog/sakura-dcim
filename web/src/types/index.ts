@@ -182,6 +182,26 @@ export interface ReinstallRequest {
   ssh_keys: string[];
 }
 
+// Provision
+export interface ProvisionRequest {
+  pool_id?: string;
+  vrf?: string;
+  os_profile_id: string;
+  disk_layout_id?: string;
+  raid_level: string;
+  root_password: string;
+  ssh_keys: string[];
+}
+
+export interface PreflightResult {
+  has_mac: boolean;
+  has_agent: boolean;
+  agent_online: boolean;
+  has_ip: boolean;
+  has_switch_port: boolean;
+  warnings: string[];
+}
+
 // Audit Log
 export interface AuditLog {
   id: string;
@@ -287,6 +307,7 @@ export interface IPPool {
   vlan_mode: 'access' | 'trunk_native' | 'trunk';
   native_vlan_id: number;
   trunk_vlans: string;
+  vlan_allocation: 'fixed' | 'auto_range';
   parent_id?: string;
   pool_type: 'ip_pool' | 'subnet';
   total_ips: number;

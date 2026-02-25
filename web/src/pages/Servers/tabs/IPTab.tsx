@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { Table, Button, Modal, Select, Space, Tag, Typography, message } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import React, { useEffect, useState, useMemo } from 'react';
+import { Table, Button, Modal, Select, Space, Tag, Typography, Divider, message } from 'antd';
+import { PlusOutlined, DeleteOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { ipPoolAPI } from '../../../api';
 import type { IPPool, IPAddress } from '../../../types';
 
@@ -13,9 +13,11 @@ interface IPTabProps {
 const IPTab: React.FC<IPTabProps> = ({ serverId }) => {
   const [addresses, setAddresses] = useState<IPAddress[]>([]);
   const [pools, setPools] = useState<IPPool[]>([]);
+  const [allPools, setAllPools] = useState<IPPool[]>([]);
   const [loading, setLoading] = useState(false);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [selectedPool, setSelectedPool] = useState<string>('');
+  const [selectedVRF, setSelectedVRF] = useState<string>('');
   const [assigning, setAssigning] = useState(false);
 
   useEffect(() => {
@@ -26,19 +28,9 @@ const IPTab: React.FC<IPTabProps> = ({ serverId }) => {
   const fetchAssignedIPs = async () => {
     setLoading(true);
     try {
-      const { data: resp } = await ipPoolAPI.list();
+      const { data: resp } = await ipPoolAPI.listAddressesByServer(serverId);
       if (resp.success && resp.data) {
-        const allAddrs: IPAddress[] = [];
-        for (const pool of resp.data) {
-          const { data: addrResp } = await ipPoolAPI.listAddresses(pool.id);
-          if (addrResp.success && addrResp.data) {
-            const serverAddrs = addrResp.data.filter(
-              (a: IPAddress) => a.server_id === serverId
-            );
-            allAddrs.push(...serverAddrs);
-          }
-        }
-        setAddresses(allAddrs);
+        setAddresses(resp.data);
       }
     } catch { /* ignore */ }
     setLoading(false);
@@ -46,12 +38,28 @@ const IPTab: React.FC<IPTabProps> = ({ serverId }) => {
 
   const fetchPools = async () => {
     try {
-      const { data: resp } = await ipPoolAPI.list();
+      // Fetch all assignable pools (includes nested, only ip_pool type with available IPs)
+      const { data: resp } = await ipPoolAPI.listAssignable();
       if (resp.success && resp.data) {
         setPools(resp.data);
       }
+      // Also fetch all pools for display lookup
+      const { data: allResp } = await ipPoolAPI.list();
+      if (allResp.success && allResp.data) {
+        setAllPools(allResp.data);
+      }
     } catch { /* ignore */ }
   };
+
+  const vrfOptions = useMemo(() => {
+    const vrfs = [...new Set(pools.map(p => p.vrf).filter(Boolean))];
+    return vrfs.map(v => ({ label: v, value: v }));
+  }, [pools]);
+
+  const filteredPools = useMemo(() => {
+    if (!selectedVRF) return pools;
+    return pools.filter(p => p.vrf === selectedVRF);
+  }, [pools, selectedVRF]);
 
   const handleAssign = async () => {
     if (!selectedPool) return;
@@ -62,12 +70,34 @@ const IPTab: React.FC<IPTabProps> = ({ serverId }) => {
         message.success(`IP ${resp.data?.address} assigned`);
         setAssignModalOpen(false);
         setSelectedPool('');
+        setSelectedVRF('');
         fetchAssignedIPs();
+        fetchPools();
       } else {
         message.error(resp.error || 'Failed to assign IP');
       }
     } catch {
       message.error('Failed to assign IP');
+    }
+    setAssigning(false);
+  };
+
+  const handleAutoAssign = async () => {
+    setAssigning(true);
+    try {
+      const { data: resp } = await ipPoolAPI.autoAssign(serverId, undefined, selectedVRF || undefined);
+      if (resp.success) {
+        message.success(`IP ${resp.data?.address} auto-assigned`);
+        setAssignModalOpen(false);
+        setSelectedPool('');
+        setSelectedVRF('');
+        fetchAssignedIPs();
+        fetchPools();
+      } else {
+        message.error(resp.error || 'No available IP pool found');
+      }
+    } catch {
+      message.error('Failed to auto-assign IP');
     }
     setAssigning(false);
   };
@@ -81,6 +111,7 @@ const IPTab: React.FC<IPTabProps> = ({ serverId }) => {
       if (resp.success) {
         message.success('IP unassigned');
         fetchAssignedIPs();
+        fetchPools();
       }
     } catch {
       message.error('Failed to unassign IP');
@@ -99,7 +130,7 @@ const IPTab: React.FC<IPTabProps> = ({ serverId }) => {
       dataIndex: 'pool_id',
       key: 'pool_id',
       render: (poolId: string) => {
-        const pool = pools.find(p => p.id === poolId);
+        const pool = allPools.find(p => p.id === poolId) || pools.find(p => p.id === poolId);
         return pool ? <Tag>{pool.network}</Tag> : poolId.slice(0, 8);
       },
     },
@@ -155,24 +186,63 @@ const IPTab: React.FC<IPTabProps> = ({ serverId }) => {
       <Modal
         title="Assign IP Address"
         open={assignModalOpen}
-        onCancel={() => setAssignModalOpen(false)}
-        onOk={handleAssign}
-        confirmLoading={assigning}
-        okText="Assign Next Available"
+        onCancel={() => { setAssignModalOpen(false); setSelectedPool(''); setSelectedVRF(''); }}
+        footer={[
+          <Button key="cancel" onClick={() => { setAssignModalOpen(false); setSelectedPool(''); setSelectedVRF(''); }}>
+            Cancel
+          </Button>,
+          <Button
+            key="auto"
+            icon={<ThunderboltOutlined />}
+            loading={assigning}
+            onClick={handleAutoAssign}
+          >
+            Auto-assign
+          </Button>,
+          <Button
+            key="assign"
+            type="primary"
+            disabled={!selectedPool}
+            loading={assigning}
+            onClick={handleAssign}
+          >
+            Assign from Selected Pool
+          </Button>,
+        ]}
       >
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <Text>Select an IP pool to assign the next available address from:</Text>
-          <Select
-            placeholder="Select IP Pool"
-            value={selectedPool || undefined}
-            onChange={setSelectedPool}
-            style={{ width: '100%' }}
-            options={pools.map(p => ({
-              label: `${p.network} (${p.total_ips - p.used_ips} available)`,
-              value: p.id,
-              disabled: p.total_ips - p.used_ips <= 0,
-            }))}
-          />
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          <div>
+            <Text type="secondary">Filter by VRF (optional):</Text>
+            <Select
+              placeholder="All VRFs"
+              value={selectedVRF || undefined}
+              onChange={(v) => { setSelectedVRF(v || ''); setSelectedPool(''); }}
+              allowClear
+              style={{ width: '100%', marginTop: 4 }}
+              options={vrfOptions}
+            />
+          </div>
+
+          <Divider style={{ margin: '8px 0' }} />
+
+          <div>
+            <Text>Select a specific IP pool:</Text>
+            <Select
+              placeholder="Select IP Pool"
+              value={selectedPool || undefined}
+              onChange={setSelectedPool}
+              style={{ width: '100%', marginTop: 4 }}
+              options={filteredPools.map(p => ({
+                label: `${p.network}${p.vrf ? ` [${p.vrf}]` : ''} (${p.total_ips - p.used_ips} available)`,
+                value: p.id,
+                disabled: p.total_ips - p.used_ips <= 0,
+              }))}
+            />
+          </div>
+
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Or click "Auto-assign" to automatically pick from the best available pool{selectedVRF ? ` in VRF "${selectedVRF}"` : ''}.
+          </Text>
         </Space>
       </Modal>
     </div>

@@ -15,6 +15,27 @@ interface Props {
   onDelete: (id: string) => void;
 }
 
+function prefixToNetmask(prefix: number): string {
+  if (prefix < 0 || prefix > 32) return '';
+  const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0;
+  return [(mask >>> 24) & 0xff, (mask >>> 16) & 0xff, (mask >>> 8) & 0xff, mask & 0xff].join('.');
+}
+
+function autoFillFromCIDR(cidr: string, form: any) {
+  const match = cidr.match(/^(\d+\.\d+\.\d+\.\d+)\/(\d+)$/);
+  if (!match) return;
+  const parts = match[1].split('.').map(Number);
+  if (parts.some(p => p < 0 || p > 255)) return;
+  const prefix = parseInt(match[2]);
+  if (prefix < 0 || prefix > 32) return;
+  const netInt = ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
+  const gwInt = netInt + 1;
+  form.setFieldsValue({
+    gateway: [(gwInt >>> 24) & 0xff, (gwInt >>> 16) & 0xff, (gwInt >>> 8) & 0xff, gwInt & 0xff].join('.'),
+    netmask: prefixToNetmask(prefix),
+  });
+}
+
 const ChildSubnetsTab: React.FC<Props> = ({ parentPool, childPools, loading, tenants, onSelect, onRefresh, onDelete }) => {
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm();
@@ -106,12 +127,12 @@ const ChildSubnetsTab: React.FC<Props> = ({ parentPool, childPools, loading, ten
             </Form.Item>
           )}
           <Form.Item name="network" label="Network (CIDR)" rules={[{ required: true }]}>
-            <Input placeholder={`e.g. subnet of ${parentPool.network}`} />
+            <Input placeholder={`e.g. subnet of ${parentPool.network}`} onBlur={(e) => autoFillFromCIDR(e.target.value, form)} />
           </Form.Item>
           <Form.Item name="gateway" label="Gateway" rules={[{ required: true }]}>
-            <Input placeholder="10.0.0.1" />
+            <Input placeholder="10.0.0.1 (auto-filled from CIDR)" />
           </Form.Item>
-          <Form.Item name="netmask" label="Netmask"><Input placeholder="255.255.255.0" /></Form.Item>
+          <Form.Item name="netmask" label="Netmask"><Input placeholder="255.255.255.0 (auto-filled from CIDR)" /></Form.Item>
           <Form.Item name="nameservers" label="Nameservers"><Input placeholder="8.8.8.8, 8.8.4.4" /></Form.Item>
           <Form.Item name="tenant_id" label="Tenant">
             <Select allowClear placeholder="Select tenant" options={tenants.map((t) => ({ label: t.name, value: t.id }))} />

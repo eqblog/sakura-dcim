@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Card, Form, Input, InputNumber, Select, Switch, Button, Row, Col, Divider, message } from 'antd';
+import { Card, Form, Input, InputNumber, Select, Switch, Button, Row, Col, Divider, Radio, message } from 'antd';
 import { SaveOutlined } from '@ant-design/icons';
 import { ipPoolAPI } from '../../api';
 import type { IPPool, Tenant } from '../../types';
@@ -14,11 +14,13 @@ const SubnetConfigTab: React.FC<Props> = ({ pool, tenants, onSaved }) => {
   const [form] = Form.useForm();
   const switchAutomation = Form.useWatch('switch_automation', form);
   const vlanMode = Form.useWatch('vlan_mode', form);
+  const vlanAllocation = Form.useWatch('vlan_allocation', form);
 
   useEffect(() => {
     form.setFieldsValue({
       ...pool,
       nameservers: pool.nameservers?.join(', ') || '',
+      vlan_allocation: pool.vlan_allocation || 'fixed',
     });
   }, [pool, form]);
 
@@ -36,6 +38,8 @@ const SubnetConfigTab: React.FC<Props> = ({ pool, tenants, onSaved }) => {
       } else message.error(resp.error);
     } catch { /* validation */ }
   };
+
+  const needsVlanChoice = switchAutomation && (vlanMode === 'access' || vlanMode === 'trunk_native');
 
   return (
     <Card>
@@ -94,7 +98,7 @@ const SubnetConfigTab: React.FC<Props> = ({ pool, tenants, onSaved }) => {
           </Col>
         </Row>
 
-        <Divider orientation="left">Switch Automation</Divider>
+        <Divider orientation={'left' as any}>Switch Automation</Divider>
 
         <Row gutter={16}>
           <Col span={8}>
@@ -115,7 +119,20 @@ const SubnetConfigTab: React.FC<Props> = ({ pool, tenants, onSaved }) => {
           )}
         </Row>
 
-        {switchAutomation && vlanMode === 'access' && (
+        {needsVlanChoice && (
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.Item name="vlan_allocation" label="VLAN Allocation">
+                <Radio.Group>
+                  <Radio value="fixed">Fixed VLAN ID</Radio>
+                  <Radio value="auto_range">Auto from Range (unique per server)</Radio>
+                </Radio.Group>
+              </Form.Item>
+            </Col>
+          </Row>
+        )}
+
+        {needsVlanChoice && vlanAllocation === 'fixed' && vlanMode === 'access' && (
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item name="vlan_id" label="Access VLAN ID">
@@ -125,7 +142,7 @@ const SubnetConfigTab: React.FC<Props> = ({ pool, tenants, onSaved }) => {
           </Row>
         )}
 
-        {switchAutomation && vlanMode === 'trunk_native' && (
+        {needsVlanChoice && vlanAllocation === 'fixed' && vlanMode === 'trunk_native' && (
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item name="native_vlan_id" label="Native VLAN ID">
@@ -140,7 +157,22 @@ const SubnetConfigTab: React.FC<Props> = ({ pool, tenants, onSaved }) => {
           </Row>
         )}
 
-        {switchAutomation && vlanMode === 'trunk' && (
+        {needsVlanChoice && vlanAllocation === 'auto_range' && (
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="vlan_range_start" label="VLAN Range Start">
+                <InputNumber style={{ width: '100%' }} min={1} max={4094} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="vlan_range_end" label="VLAN Range End">
+                <InputNumber style={{ width: '100%' }} min={1} max={4094} />
+              </Form.Item>
+            </Col>
+          </Row>
+        )}
+
+        {switchAutomation && vlanMode === 'trunk_native' && vlanAllocation === 'auto_range' && (
           <Row gutter={16}>
             <Col span={16}>
               <Form.Item name="trunk_vlans" label="Trunk VLAN IDs">
@@ -150,16 +182,11 @@ const SubnetConfigTab: React.FC<Props> = ({ pool, tenants, onSaved }) => {
           </Row>
         )}
 
-        {switchAutomation && (
+        {switchAutomation && vlanMode === 'trunk' && (
           <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item name="vlan_range_start" label="VLAN Range Start">
-                <InputNumber style={{ width: '100%' }} min={0} max={4094} />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="vlan_range_end" label="VLAN Range End">
-                <InputNumber style={{ width: '100%' }} min={0} max={4094} />
+            <Col span={16}>
+              <Form.Item name="trunk_vlans" label="Trunk VLAN IDs">
+                <Input placeholder="100,200,300-400 (comma-separated, ranges supported)" />
               </Form.Item>
             </Col>
           </Row>

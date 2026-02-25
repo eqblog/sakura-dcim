@@ -109,6 +109,7 @@ func main() {
 	ipService := service.NewIPService(ipPoolRepo, ipAddressRepo)
 	ipService.SetSwitchDeps(switchService, switchPortRepo)
 	discoveryService := service.NewDiscoveryService(discoverySessionRepo, discoveredServerRepo, serverRepo, agentRepo, hub, logger)
+	provisionService := service.NewProvisionService(serverRepo, ipService, reinstallService, switchPortRepo, hub, logger)
 
 	// Wire InfluxDB into bandwidth service
 	if bandwidthInflux != nil {
@@ -206,6 +207,9 @@ func main() {
 
 	reinstallHandler := handler.NewReinstallHandler(reinstallService)
 	reinstallHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermOSReinstall)))
+
+	provisionHandler := handler.NewProvisionHandler(provisionService)
+	provisionHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermOSReinstall)))
 
 	switchHandler := handler.NewSwitchHandler(switchService)
 	switchHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermSwitchManage)))

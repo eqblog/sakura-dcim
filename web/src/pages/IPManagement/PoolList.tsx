@@ -17,6 +17,41 @@ interface Props {
   onDelete: (id: string) => void;
 }
 
+// Convert CIDR prefix length to netmask string
+function prefixToNetmask(prefix: number): string {
+  if (prefix < 0 || prefix > 32) return '';
+  const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0;
+  return [
+    (mask >>> 24) & 0xff,
+    (mask >>> 16) & 0xff,
+    (mask >>> 8) & 0xff,
+    mask & 0xff,
+  ].join('.');
+}
+
+// Auto-fill gateway and netmask from CIDR
+function autoFillFromCIDR(cidr: string, form: any) {
+  const match = cidr.match(/^(\d+\.\d+\.\d+\.\d+)\/(\d+)$/);
+  if (!match) return;
+  const parts = match[1].split('.').map(Number);
+  if (parts.some(p => p < 0 || p > 255)) return;
+  const prefix = parseInt(match[2]);
+  if (prefix < 0 || prefix > 32) return;
+  // Gateway = network address + 1 (first usable IP)
+  const netInt = ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
+  const gwInt = netInt + 1;
+  const gateway = [
+    (gwInt >>> 24) & 0xff,
+    (gwInt >>> 16) & 0xff,
+    (gwInt >>> 8) & 0xff,
+    gwInt & 0xff,
+  ].join('.');
+  form.setFieldsValue({
+    gateway,
+    netmask: prefixToNetmask(prefix),
+  });
+}
+
 const PoolList: React.FC<Props> = ({ pools, loading, tenants, parentId, onSelect, onRefresh, onDelete }) => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<IPPool | null>(null);
@@ -116,29 +151,30 @@ const PoolList: React.FC<Props> = ({ pools, loading, tenants, parentId, onSelect
       </Card>
       <Modal title={editing ? 'Edit Pool' : 'Create Pool'} open={modalOpen} onOk={handleSubmit} onCancel={() => setModalOpen(false)} okText={editing ? 'Update' : 'Create'} width={520}>
         <Form form={form} layout="vertical">
-          {!editing && (
-            <>
-              <Form.Item
-                name="pool_type"
-                label={<Space>Select Subnet Action <Tooltip title="Choose how this subnet will be used"><InfoCircleOutlined /></Tooltip></Space>}
-              >
-                <Radio.Group>
-                  <Space direction="vertical">
-                    <Radio value="ip_pool">Generate IPs for the new subnet</Radio>
-                    <Radio value="subnet">Subnet will be divided into smaller subnets</Radio>
-                  </Space>
-                </Radio.Group>
-              </Form.Item>
-              {poolType === 'ip_pool' && (
-                <Form.Item name="reserve_gateway" valuePropName="checked">
-                  <Checkbox>Reserve Gateway IP</Checkbox>
-                </Form.Item>
-              )}
-            </>
+          <Form.Item
+            name="pool_type"
+            label={<Space>Pool Type <Tooltip title="Choose how this subnet will be used"><InfoCircleOutlined /></Tooltip></Space>}
+          >
+            <Radio.Group>
+              <Space direction="vertical">
+                <Radio value="ip_pool">Generate IPs for the new subnet</Radio>
+                <Radio value="subnet">Subnet will be divided into smaller subnets</Radio>
+              </Space>
+            </Radio.Group>
+          </Form.Item>
+          {poolType === 'ip_pool' && !editing && (
+            <Form.Item name="reserve_gateway" valuePropName="checked">
+              <Checkbox>Reserve Gateway IP</Checkbox>
+            </Form.Item>
           )}
-          <Form.Item name="network" label="Network (CIDR)" rules={[{ required: true }]}><Input placeholder="10.0.0.0/24" /></Form.Item>
-          <Form.Item name="gateway" label="Gateway" rules={[{ required: true }]}><Input placeholder="10.0.0.1" /></Form.Item>
-          <Form.Item name="netmask" label="Netmask"><Input placeholder="255.255.255.0" /></Form.Item>
+          <Form.Item name="network" label="Network (CIDR)" rules={[{ required: true }]}>
+            <Input
+              placeholder="10.0.0.0/24"
+              onBlur={(e) => autoFillFromCIDR(e.target.value, form)}
+            />
+          </Form.Item>
+          <Form.Item name="gateway" label="Gateway" rules={[{ required: true }]}><Input placeholder="10.0.0.1 (auto-filled from CIDR)" /></Form.Item>
+          <Form.Item name="netmask" label="Netmask"><Input placeholder="255.255.255.0 (auto-filled from CIDR)" /></Form.Item>
           <Form.Item name="vrf" label="VRF"><Input placeholder="default (empty = no VRF)" /></Form.Item>
           <Form.Item name="nameservers" label="Nameservers"><Input placeholder="8.8.8.8, 8.8.4.4 (comma-separated)" /></Form.Item>
           <Form.Item name="tenant_id" label="Tenant">
