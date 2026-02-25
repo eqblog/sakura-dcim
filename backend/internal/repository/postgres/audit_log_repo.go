@@ -78,7 +78,7 @@ func (r *AuditLogRepo) List(ctx context.Context, params domain.AuditLogListParam
 	}
 	offset := (params.Page - 1) * params.PageSize
 
-	query := fmt.Sprintf(`SELECT id, tenant_id, user_id, action, resource_type, resource_id, details, ip_address::text, user_agent, created_at
+	query := fmt.Sprintf(`SELECT id, tenant_id, user_id, action, resource_type, resource_id, details, host(ip_address), user_agent, created_at
 		FROM audit_logs %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, where, argIdx, argIdx+1)
 	args = append(args, params.PageSize, offset)
 

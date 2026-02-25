@@ -32,7 +32,7 @@ func (r *IPPoolRepo) Create(ctx context.Context, pool *domain.IPPool) error {
 func (r *IPPoolRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.IPPool, error) {
 	pool := &domain.IPPool{}
 	err := r.db.QueryRow(ctx,
-		`SELECT p.id, p.tenant_id, p.network::text, p.gateway::text, p.netmask, p.vrf, p.nameservers, p.description,
+		`SELECT p.id, p.tenant_id, p.network::text, host(p.gateway), p.netmask, p.vrf, p.nameservers, p.description,
 		        COALESCE((SELECT COUNT(*) FROM ip_addresses WHERE pool_id = p.id), 0) AS total_ips,
 		        COALESCE((SELECT COUNT(*) FROM ip_addresses WHERE pool_id = p.id AND status != 'available'), 0) AS used_ips
 		 FROM ip_pools p WHERE p.id = $1`, id,
@@ -44,7 +44,7 @@ func (r *IPPoolRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.IPPool,
 }
 
 func (r *IPPoolRepo) List(ctx context.Context, tenantID *uuid.UUID) ([]domain.IPPool, error) {
-	query := `SELECT p.id, p.tenant_id, p.network::text, p.gateway::text, p.netmask, p.vrf, p.nameservers, p.description,
+	query := `SELECT p.id, p.tenant_id, p.network::text, host(p.gateway), p.netmask, p.vrf, p.nameservers, p.description,
 	                  COALESCE((SELECT COUNT(*) FROM ip_addresses WHERE pool_id = p.id), 0) AS total_ips,
 	                  COALESCE((SELECT COUNT(*) FROM ip_addresses WHERE pool_id = p.id AND status != 'available'), 0) AS used_ips
 	           FROM ip_pools p`

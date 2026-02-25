@@ -30,7 +30,7 @@ func (r *IPAddressRepo) Create(ctx context.Context, addr *domain.IPAddress) erro
 func (r *IPAddressRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.IPAddress, error) {
 	addr := &domain.IPAddress{}
 	err := r.db.QueryRow(ctx,
-		`SELECT id, pool_id, address::text, server_id, status, note
+		`SELECT id, pool_id, host(address), server_id, status, note
 		 FROM ip_addresses WHERE id = $1`, id,
 	).Scan(&addr.ID, &addr.PoolID, &addr.Address, &addr.ServerID, &addr.Status, &addr.Note)
 	if err != nil {
@@ -41,7 +41,7 @@ func (r *IPAddressRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.IPAd
 
 func (r *IPAddressRepo) ListByPoolID(ctx context.Context, poolID uuid.UUID) ([]domain.IPAddress, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, pool_id, address::text, server_id, status, note
+		`SELECT id, pool_id, host(address), server_id, status, note
 		 FROM ip_addresses WHERE pool_id = $1
 		 ORDER BY address`, poolID)
 	if err != nil {
@@ -62,7 +62,7 @@ func (r *IPAddressRepo) ListByPoolID(ctx context.Context, poolID uuid.UUID) ([]d
 
 func (r *IPAddressRepo) ListByServerID(ctx context.Context, serverID uuid.UUID) ([]domain.IPAddress, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, pool_id, address::text, server_id, status, note
+		`SELECT id, pool_id, host(address), server_id, status, note
 		 FROM ip_addresses WHERE server_id = $1
 		 ORDER BY address`, serverID)
 	if err != nil {
@@ -97,7 +97,7 @@ func (r *IPAddressRepo) Delete(ctx context.Context, id uuid.UUID) error {
 func (r *IPAddressRepo) GetNextAvailable(ctx context.Context, poolID uuid.UUID) (*domain.IPAddress, error) {
 	addr := &domain.IPAddress{}
 	err := r.db.QueryRow(ctx,
-		`SELECT id, pool_id, address::text, server_id, status, note
+		`SELECT id, pool_id, host(address), server_id, status, note
 		 FROM ip_addresses WHERE pool_id = $1 AND status = 'available'
 		 ORDER BY address LIMIT 1`, poolID,
 	).Scan(&addr.ID, &addr.PoolID, &addr.Address, &addr.ServerID, &addr.Status, &addr.Note)

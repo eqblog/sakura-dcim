@@ -45,7 +45,7 @@ func (r *ServerRepo) Create(ctx context.Context, server *domain.Server) error {
 
 func (r *ServerRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Server, error) {
 	query := `SELECT id, tenant_id, agent_id, hostname, label, status,
-		COALESCE(primary_ip::text,''), COALESCE(ipmi_ip::text,''), ipmi_user, ipmi_pass, mac_address, bmc_type,
+		COALESCE(host(primary_ip),''), COALESCE(host(ipmi_ip),''), ipmi_user, ipmi_pass, mac_address, bmc_type,
 		cpu_model, cpu_cores, ram_mb, tags, notes, created_at, updated_at
 		FROM servers WHERE id = $1`
 
@@ -110,7 +110,7 @@ func (r *ServerRepo) List(ctx context.Context, params domain.ServerListParams) (
 	offset := (params.Page - 1) * params.PageSize
 
 	selectQuery := fmt.Sprintf(`SELECT id, tenant_id, agent_id, hostname, label, status,
-		COALESCE(primary_ip::text,''), COALESCE(ipmi_ip::text,''), mac_address, bmc_type,
+		COALESCE(host(primary_ip),''), COALESCE(host(ipmi_ip),''), mac_address, bmc_type,
 		cpu_model, cpu_cores, ram_mb, tags, notes, created_at, updated_at
 		FROM servers %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, where, argIdx, argIdx+1)
 	args = append(args, params.PageSize, offset)
