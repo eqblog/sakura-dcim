@@ -93,9 +93,11 @@ const ChildSubnetsTab: React.FC<Props> = ({ parentPool, childPools, loading, ten
       render: (_, record) => (
         <Space>
           <Button size="small" type="link" onClick={() => onSelect(record)}>Manage</Button>
-          <Popconfirm title="Delete this subnet and all its contents?" onConfirm={() => onDelete(record.id)}>
-            <Button size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          <span onClick={(e) => e.stopPropagation()}>
+            <Popconfirm title="Delete this subnet and all its contents?" onConfirm={() => onDelete(record.id)}>
+              <Button size="small" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+          </span>
         </Space>
       ),
     },

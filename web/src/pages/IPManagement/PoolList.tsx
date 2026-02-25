@@ -131,9 +131,11 @@ const PoolList: React.FC<Props> = ({ pools, loading, tenants, parentId, onSelect
         <Space>
           <Button size="small" type="link" onClick={() => onSelect(record)}>Manage</Button>
           <Button size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); openEdit(record); }} />
-          <Popconfirm title="Delete this pool and all its contents?" onConfirm={() => onDelete(record.id)}>
-            <Button size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          <span onClick={(e) => e.stopPropagation()}>
+            <Popconfirm title="Delete this pool and all its contents?" onConfirm={() => onDelete(record.id)}>
+              <Button size="small" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+          </span>
         </Space>
       ),
     },
