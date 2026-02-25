@@ -226,6 +226,64 @@ func (s *SwitchService) GetPortStatus(ctx context.Context, switchID uuid.UUID, p
 	return result, nil
 }
 
+// TestConnection tests SSH and SNMP connectivity to a switch via the agent.
+func (s *SwitchService) TestConnection(ctx context.Context, switchID uuid.UUID) (map[string]any, error) {
+	sw, err := s.switchRepo.GetByID(ctx, switchID)
+	if err != nil {
+		return nil, fmt.Errorf("switch not found: %w", err)
+	}
+
+	payload := map[string]any{
+		"switch_ip":      sw.IP,
+		"ssh_user":       sw.SSHUser,
+		"ssh_pass":       sw.SSHPass,
+		"ssh_port":       sw.SSHPort,
+		"vendor":         sw.Vendor,
+		"snmp_community": sw.SNMPCommunity,
+		"snmp_version":   sw.SNMPVersion,
+	}
+
+	resp, err := s.hub.SendRequest(sw.AgentID, ws.ActionSwitchTest, payload, 15*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("agent request failed: %w", err)
+	}
+	if resp.Error != "" {
+		return nil, fmt.Errorf("agent error: %s", resp.Error)
+	}
+
+	result := make(map[string]any)
+	raw, _ := json.Marshal(resp.Payload)
+	json.Unmarshal(raw, &result)
+	return result, nil
+}
+
+// PollSNMP triggers SNMP polling on a switch and returns discovered port data.
+func (s *SwitchService) PollSNMP(ctx context.Context, switchID uuid.UUID) (map[string]any, error) {
+	sw, err := s.switchRepo.GetByID(ctx, switchID)
+	if err != nil {
+		return nil, fmt.Errorf("switch not found: %w", err)
+	}
+
+	payload := map[string]any{
+		"switch_ip":      sw.IP,
+		"snmp_community": sw.SNMPCommunity,
+		"snmp_version":   sw.SNMPVersion,
+	}
+
+	resp, err := s.hub.SendRequest(sw.AgentID, ws.ActionSNMPPoll, payload, 30*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("agent request failed: %w", err)
+	}
+	if resp.Error != "" {
+		return nil, fmt.Errorf("agent error: %s", resp.Error)
+	}
+
+	result := make(map[string]any)
+	raw, _ := json.Marshal(resp.Payload)
+	json.Unmarshal(raw, &result)
+	return result, nil
+}
+
 // ConfigureDHCPRelay sends a DHCP relay configuration command to a switch via the agent.
 func (s *SwitchService) ConfigureDHCPRelay(ctx context.Context, switchID uuid.UUID, req *domain.DHCPRelayRequest) error {
 	sw, err := s.switchRepo.GetByID(ctx, switchID)

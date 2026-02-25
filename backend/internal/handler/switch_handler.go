@@ -40,6 +40,10 @@ func (h *SwitchHandler) RegisterRoutes(r *gin.RouterGroup) {
 		g.POST("/:id/ports/:portId/provision", h.ProvisionPort)
 		g.GET("/:id/ports/:portId/status", h.GetPortStatus)
 
+		// Test & poll
+		g.POST("/:id/test", h.TestConnection)
+		g.POST("/:id/snmp-poll", h.PollSNMP)
+
 		// DHCP relay
 		g.POST("/:id/dhcp-relay", h.ConfigureDHCPRelay)
 
@@ -298,6 +302,34 @@ func (h *SwitchHandler) ConfigureDHCPRelay(c *gin.Context) {
 		msg = "DHCP relay removed"
 	}
 	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Message: msg})
+}
+
+func (h *SwitchHandler) TestConnection(c *gin.Context) {
+	switchID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: "invalid switch ID"})
+		return
+	}
+	result, err := h.svc.TestConnection(c.Request.Context(), switchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: result})
+}
+
+func (h *SwitchHandler) PollSNMP(c *gin.Context) {
+	switchID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: "invalid switch ID"})
+		return
+	}
+	result, err := h.svc.PollSNMP(c.Request.Context(), switchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: result})
 }
 
 func (h *SwitchHandler) GetPortStatus(c *gin.Context) {

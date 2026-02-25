@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -409,6 +410,82 @@ func generateDHCPRelayCommands(vendor string, p *SwitchDHCPRelayPayload) []strin
 	default:
 		return nil
 	}
+}
+
+// SwitchTestPayload contains parameters for testing connectivity to a switch.
+type SwitchTestPayload struct {
+	SwitchIP      string `json:"switch_ip"`
+	SSHUser       string `json:"ssh_user"`
+	SSHPass       string `json:"ssh_pass"`
+	SSHPort       int    `json:"ssh_port"`
+	Vendor        string `json:"vendor"`
+	SNMPCommunity string `json:"snmp_community"`
+	SNMPVersion   string `json:"snmp_version"`
+}
+
+// HandleTestConnection tests SSH and SNMP connectivity to a switch.
+func (e *SwitchExecutor) HandleTestConnection(raw json.RawMessage) (interface{}, error) {
+	var p SwitchTestPayload
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return nil, fmt.Errorf("parse payload: %w", err)
+	}
+
+	e.logger.Info("testing switch connection",
+		zap.String("switch_ip", p.SwitchIP),
+	)
+
+	result := map[string]interface{}{
+		"switch_ip": p.SwitchIP,
+	}
+
+	// Test SSH
+	sshOK := false
+	sshMsg := ""
+	commands := generateStatusCommands(p.Vendor, "")
+	if len(commands) == 0 {
+		commands = []string{"show version"}
+	}
+	output, err := e.execSSH(p.SwitchIP, p.SSHPort, p.SSHUser, p.SSHPass, commands[:1])
+	if err != nil {
+		sshMsg = err.Error()
+	} else {
+		sshOK = true
+		sshMsg = "connected"
+		if len(output) > 200 {
+			output = output[:200] + "..."
+		}
+		result["ssh_output"] = output
+	}
+	result["ssh_ok"] = sshOK
+	result["ssh_message"] = sshMsg
+
+	// Test SNMP (sysDescr.0)
+	snmpOK := false
+	snmpMsg := ""
+	if p.SNMPCommunity != "" {
+		version := "-v2c"
+		if p.SNMPVersion == "v3" {
+			version = "-v3"
+		}
+		out, err := exec.Command("snmpget", version, "-c", p.SNMPCommunity, p.SwitchIP, "1.3.6.1.2.1.1.1.0").CombinedOutput()
+		if err != nil {
+			snmpMsg = fmt.Sprintf("%s: %s", err.Error(), strings.TrimSpace(string(out)))
+		} else {
+			snmpOK = true
+			desc := strings.TrimSpace(string(out))
+			if len(desc) > 200 {
+				desc = desc[:200] + "..."
+			}
+			snmpMsg = "connected"
+			result["snmp_sysdescr"] = desc
+		}
+	} else {
+		snmpMsg = "no community configured"
+	}
+	result["snmp_ok"] = snmpOK
+	result["snmp_message"] = snmpMsg
+
+	return result, nil
 }
 
 // normalizeVendor maps various vendor name forms to a canonical key.

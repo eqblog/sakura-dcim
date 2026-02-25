@@ -214,6 +214,11 @@ export const switchAPI = {
     client.put<APIResponse>(`/switches/ports/${portId}/link`, { server_id: serverId }),
   unlinkPort: (portId: string) =>
     client.put<APIResponse>(`/switches/ports/${portId}/unlink`),
+  // Test & poll
+  testConnection: (switchId: string) =>
+    client.post<APIResponse>(`/switches/${switchId}/test`),
+  pollSNMP: (switchId: string) =>
+    client.post<APIResponse>(`/switches/${switchId}/snmp-poll`),
   // Command templates
   getCommandTemplates: (vendor?: string) =>
     client.get<APIResponse>(`/switches/templates`, { params: vendor ? { vendor } : undefined }),

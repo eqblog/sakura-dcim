@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Typography, Table, Button, Space, Modal, Form, Input, Select, InputNumber, Tag, message, Popconfirm, Tabs, Collapse } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined, ReloadOutlined, CodeOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, ThunderboltOutlined, ReloadOutlined, CodeOutlined, ApiOutlined, RadarChartOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { switchAPI } from '../../api';
-import type { Switch, SwitchPort } from '../../types';
+import { switchAPI, agentAPI } from '../../api';
+import type { Switch, SwitchPort, Agent } from '../../types';
 
 const { Title, Text } = Typography;
 
@@ -43,6 +43,14 @@ const SwitchesPage: React.FC = () => {
   const [editingPort, setEditingPort] = useState<SwitchPort | null>(null);
   const [portForm] = Form.useForm();
 
+  // Agents
+  const [agents, setAgents] = useState<Agent[]>([]);
+
+  // Test / SNMP state
+  const [testResult, setTestResult] = useState<any>(null);
+  const [testModalOpen, setTestModalOpen] = useState(false);
+  const [testLoading, setTestLoading] = useState<string | null>(null);
+
   // Command templates state
   const [templates, setTemplates] = useState<VendorTemplates[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
@@ -56,6 +64,34 @@ const SwitchesPage: React.FC = () => {
     setLoading(false);
   };
 
+  const handleTestConnection = async (sw: Switch) => {
+    setTestLoading(sw.id);
+    try {
+      const { data: resp } = await switchAPI.testConnection(sw.id);
+      if (resp.success) {
+        setTestResult({ type: 'test', switch_name: sw.name, ...resp.data });
+        setTestModalOpen(true);
+      } else {
+        message.error(resp.error || 'Test failed');
+      }
+    } catch { message.error('Test connection failed'); }
+    setTestLoading(null);
+  };
+
+  const handleSNMPPoll = async (sw: Switch) => {
+    setTestLoading(`snmp-${sw.id}`);
+    try {
+      const { data: resp } = await switchAPI.pollSNMP(sw.id);
+      if (resp.success) {
+        setTestResult({ type: 'snmp', switch_name: sw.name, ...resp.data });
+        setTestModalOpen(true);
+      } else {
+        message.error(resp.error || 'SNMP poll failed');
+      }
+    } catch { message.error('SNMP poll failed'); }
+    setTestLoading(null);
+  };
+
   const fetchTemplates = async () => {
     setTemplatesLoading(true);
     try {
@@ -65,7 +101,12 @@ const SwitchesPage: React.FC = () => {
     setTemplatesLoading(false);
   };
 
-  useEffect(() => { fetchSwitches(); }, []);
+  useEffect(() => {
+    fetchSwitches();
+    agentAPI.list({ page: 1, page_size: 200 }).then(({ data: resp }) => {
+      if (resp.success) setAgents(resp.data?.items || []);
+    });
+  }, []);
 
   const openCreate = () => {
     setEditing(null);
@@ -174,10 +215,12 @@ const SwitchesPage: React.FC = () => {
     { title: 'Model', dataIndex: 'model', key: 'model', ellipsis: true },
     { title: 'SNMP', dataIndex: 'snmp_version', key: 'snmp', render: (v: string) => <Tag>{v}</Tag> },
     {
-      title: 'Actions', key: 'actions', width: 180,
+      title: 'Actions', key: 'actions', width: 320,
       render: (_, record) => (
-        <Space>
+        <Space wrap>
           <Button size="small" onClick={() => fetchPorts(record)}>Ports</Button>
+          <Button size="small" icon={<ApiOutlined />} loading={testLoading === record.id} onClick={() => handleTestConnection(record)}>Test</Button>
+          <Button size="small" icon={<RadarChartOutlined />} loading={testLoading === `snmp-${record.id}`} onClick={() => handleSNMPPoll(record)}>SNMP</Button>
           <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)} />
           <Popconfirm title="Delete this switch?" onConfirm={() => handleDelete(record.id)}>
             <Button size="small" danger icon={<DeleteOutlined />} />
@@ -345,8 +388,16 @@ const SwitchesPage: React.FC = () => {
               <InputNumber min={1} max={65535} />
             </Form.Item>
           </Space>
-          <Form.Item name="agent_id" label="Agent ID" rules={[{ required: true }]}>
-            <Input placeholder="Agent UUID" />
+          <Form.Item name="agent_id" label="Agent" rules={[{ required: true }]}>
+            <Select
+              placeholder="Select agent"
+              showSearch
+              optionFilterProp="label"
+              options={agents.map(a => ({
+                label: `${a.name} (${a.location})`,
+                value: a.id,
+              }))}
+            />
           </Form.Item>
         </Form>
       </Modal>
@@ -384,6 +435,61 @@ const SwitchesPage: React.FC = () => {
             <Input placeholder="Server UUID to link" allowClear />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* Test / SNMP Result Modal */}
+      <Modal
+        title={testResult?.type === 'snmp' ? `SNMP Poll — ${testResult?.switch_name}` : `Connection Test — ${testResult?.switch_name}`}
+        open={testModalOpen}
+        onCancel={() => setTestModalOpen(false)}
+        footer={<Button onClick={() => setTestModalOpen(false)}>Close</Button>}
+        width={700}
+      >
+        {testResult?.type === 'test' && (
+          <div>
+            <Space direction="vertical" style={{ width: '100%' }} size="middle">
+              <Card size="small" title="SSH">
+                <Tag color={testResult.ssh_ok ? 'green' : 'red'}>{testResult.ssh_ok ? 'Connected' : 'Failed'}</Tag>
+                <Text type="secondary" style={{ marginLeft: 8 }}>{testResult.ssh_message}</Text>
+                {testResult.ssh_output && (
+                  <pre style={{ background: '#f5f5f5', padding: 8, borderRadius: 4, marginTop: 8, fontSize: 12, maxHeight: 150, overflow: 'auto' }}>
+                    {testResult.ssh_output}
+                  </pre>
+                )}
+              </Card>
+              <Card size="small" title="SNMP">
+                <Tag color={testResult.snmp_ok ? 'green' : 'red'}>{testResult.snmp_ok ? 'Connected' : 'Failed'}</Tag>
+                <Text type="secondary" style={{ marginLeft: 8 }}>{testResult.snmp_message}</Text>
+                {testResult.snmp_sysdescr && (
+                  <pre style={{ background: '#f5f5f5', padding: 8, borderRadius: 4, marginTop: 8, fontSize: 12, maxHeight: 150, overflow: 'auto' }}>
+                    {testResult.snmp_sysdescr}
+                  </pre>
+                )}
+              </Card>
+            </Space>
+          </div>
+        )}
+        {testResult?.type === 'snmp' && testResult?.ports && (
+          <Table
+            size="small"
+            rowKey="port_index"
+            dataSource={testResult.ports}
+            pagination={{ pageSize: 20 }}
+            columns={[
+              { title: 'Index', dataIndex: 'port_index', key: 'idx', width: 70 },
+              { title: 'Port Name', dataIndex: 'port_name', key: 'name' },
+              { title: 'Speed', dataIndex: 'speed', key: 'speed', render: (v: number) => {
+                if (!v) return '-';
+                if (v >= 1000000000) return `${v / 1000000000}G`;
+                if (v >= 1000000) return `${v / 1000000}M`;
+                return `${v}`;
+              }},
+              { title: 'Status', dataIndex: 'oper_status', key: 'status', render: (v: string) => v === 'up' ? <Tag color="green">Up</Tag> : v === 'down' ? <Tag color="red">Down</Tag> : <Tag>{v}</Tag> },
+              { title: 'In (bytes)', dataIndex: 'in_octets', key: 'in', render: (v: number) => v?.toLocaleString() || '0' },
+              { title: 'Out (bytes)', dataIndex: 'out_octets', key: 'out', render: (v: number) => v?.toLocaleString() || '0' },
+            ]}
+          />
+        )}
       </Modal>
     </div>
   );
