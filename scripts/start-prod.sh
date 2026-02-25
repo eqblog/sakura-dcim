@@ -88,10 +88,24 @@ if [ "$WITH_AGENT" = "1" ]; then
     install_agent_tools
   fi
 
-  export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"
+  export PATH="/usr/local/go/bin:$HOME/go/bin:/usr/sbin:/usr/local/sbin:$PATH"
+
+  # Check Go version, not just existence
+  REQUIRED_GO_MINOR=25
+  GO_VERSION_INSTALL="1.25.3"
+  go_needs_install=false
   if ! command -v go &>/dev/null; then
-    echo "  -> Installing Go 1.25..."
-    GO_VERSION="1.25.3"
+    go_needs_install=true
+  else
+    CURRENT_GO_MINOR=$(go version 2>/dev/null | grep -oP 'go1\.(\d+)' | grep -oP '\d+$')
+    if [ -n "$CURRENT_GO_MINOR" ] && [ "$CURRENT_GO_MINOR" -lt "$REQUIRED_GO_MINOR" ]; then
+      echo "  -> Go version too old (1.${CURRENT_GO_MINOR}), upgrading..."
+      go_needs_install=true
+    fi
+  fi
+
+  if [ "$go_needs_install" = true ]; then
+    echo "  -> Installing Go ${GO_VERSION_INSTALL}..."
     ARCH=$(uname -m)
     case "$ARCH" in
       x86_64)  GOARCH="amd64" ;;
@@ -99,10 +113,13 @@ if [ "$WITH_AGENT" = "1" ]; then
       *)       GOARCH="amd64" ;;
     esac
     rm -rf /usr/local/go
-    curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${GOARCH}.tar.gz" | tar -C /usr/local -xzf -
+    curl -fsSL "https://go.dev/dl/go${GO_VERSION_INSTALL}.linux-${GOARCH}.tar.gz" | tar -C /usr/local -xzf -
     echo 'export PATH="/usr/local/go/bin:$PATH"' > /etc/profile.d/go.sh
-    echo "  -> Go ${GO_VERSION} installed."
+    echo "  -> Go ${GO_VERSION_INSTALL} installed."
   fi
+
+  # Kill old agent processes
+  pkill -f 'sakura-agent' 2>/dev/null || true
 fi
 
 # Verify

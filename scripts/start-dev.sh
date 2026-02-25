@@ -16,9 +16,23 @@ FRONTEND_PORT="${FRONTEND_PORT:-5173}"
 BACKEND_PORT="${BACKEND_PORT:-8080}"
 export BACKEND_PORT  # passed to vite.config.ts for proxy target
 
+# Ensure /usr/sbin is in PATH (ipmitool, dmidecode live here on some distros)
+export PATH="/usr/local/go/bin:$HOME/go/bin:/usr/sbin:/usr/local/sbin:$PATH"
+
 echo "========================================="
 echo "  Sakura DCIM — Starting Development"
 echo "========================================="
+
+# ─── Kill old processes from previous runs ───
+echo ""
+echo "[0/8] Cleaning up old processes..."
+# Kill old agent/backend go processes
+pkill -f 'go run ./cmd/agent' 2>/dev/null || true
+pkill -f 'go run ./cmd/server' 2>/dev/null || true
+pkill -f 'sakura-agent' 2>/dev/null || true
+# Remove old Docker agent container (may exist from start-dev.bat)
+docker rm -f sakura-dev-agent 2>/dev/null || true
+sleep 1
 
 # ─── Helper: detect package manager ───
 install_pkg() {
@@ -36,9 +50,9 @@ install_pkg() {
   fi
 }
 
-# ─── 0. Install dependencies if missing ───
+# ─── 1. Install dependencies if missing ───
 echo ""
-echo "[0/8] Checking & installing dependencies..."
+echo "[1/8] Checking & installing dependencies..."
 
 # curl
 if ! command -v curl &>/dev/null; then
@@ -80,6 +94,13 @@ if ! command -v ipmitool &>/dev/null || ! command -v dmidecode &>/dev/null || ! 
   install_agent_tools
 fi
 
+# Verify ipmitool is actually accessible
+if ! command -v ipmitool &>/dev/null; then
+  echo "  WARNING: ipmitool not found in PATH after install."
+  echo "  IPMI power control will not work."
+  echo "  Try: apt-get install -y ipmitool   (or equivalent for your OS)"
+fi
+
 # Docker
 if ! command -v docker &>/dev/null; then
   echo "  -> Installing Docker..."
@@ -102,11 +123,24 @@ if ! docker compose version &>/dev/null 2>&1; then
   echo "  -> Docker Compose installed."
 fi
 
-# Go
-export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"
+# Go — check both existence AND version
+REQUIRED_GO="1.25"
+GO_VERSION_INSTALL="1.25.3"
+go_needs_install=false
+
 if ! command -v go &>/dev/null; then
-  echo "  -> Installing Go 1.25..."
-  GO_VERSION="1.25.3"
+  go_needs_install=true
+else
+  # Extract minor version: "go version go1.22.5 linux/amd64" → "22"
+  CURRENT_GO_MINOR=$(go version 2>/dev/null | grep -oP 'go1\.(\d+)' | grep -oP '\d+$')
+  if [ -n "$CURRENT_GO_MINOR" ] && [ "$CURRENT_GO_MINOR" -lt 25 ]; then
+    echo "  -> Go version too old (1.${CURRENT_GO_MINOR}), need >= ${REQUIRED_GO}. Upgrading..."
+    go_needs_install=true
+  fi
+fi
+
+if [ "$go_needs_install" = true ]; then
+  echo "  -> Installing Go ${GO_VERSION_INSTALL}..."
   ARCH=$(uname -m)
   case "$ARCH" in
     x86_64)  GOARCH="amd64" ;;
@@ -115,10 +149,10 @@ if ! command -v go &>/dev/null; then
     *)       GOARCH="amd64" ;;
   esac
   rm -rf /usr/local/go
-  curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${GOARCH}.tar.gz" | tar -C /usr/local -xzf -
+  curl -fsSL "https://go.dev/dl/go${GO_VERSION_INSTALL}.linux-${GOARCH}.tar.gz" | tar -C /usr/local -xzf -
   # Persist for future shells
   echo 'export PATH="/usr/local/go/bin:$PATH"' > /etc/profile.d/go.sh
-  echo "  -> Go ${GO_VERSION} installed."
+  echo "  -> Go ${GO_VERSION_INSTALL} installed."
 fi
 
 # Node.js + npm
@@ -149,18 +183,19 @@ if [ -n "$MISSING" ]; then
   exit 1
 fi
 
-echo "  Docker : $(docker --version 2>/dev/null | cut -d' ' -f3 | tr -d ',')"
-echo "  Go     : $(go version 2>/dev/null | cut -d' ' -f3)"
-echo "  Node   : $(node -v 2>/dev/null)"
-echo "  npm    : $(npm -v 2>/dev/null)"
+echo "  Docker   : $(docker --version 2>/dev/null | cut -d' ' -f3 | tr -d ',')"
+echo "  Go       : $(go version 2>/dev/null | cut -d' ' -f3)"
+echo "  Node     : $(node -v 2>/dev/null)"
+echo "  npm      : $(npm -v 2>/dev/null)"
+echo "  ipmitool : $(ipmitool -V 2>&1 | head -1 || echo 'NOT FOUND')"
 echo "  OK"
 echo ""
 
-# ─── 1. Start infrastructure ───
-echo "[1/8] Starting PostgreSQL, Redis, InfluxDB..."
+# ─── 2. Start infrastructure ───
+echo "[2/8] Starting PostgreSQL, Redis, InfluxDB..."
 cd "$ROOT" && docker compose up -d postgres redis influxdb
 
-echo "[2/8] Waiting for PostgreSQL to be ready..."
+echo "[3/8] Waiting for PostgreSQL to be ready..."
 for i in $(seq 1 30); do
   if docker exec sakura-postgres pg_isready -U sakura -d sakura_dcim -q 2>/dev/null; then
     echo "  PostgreSQL ready."
@@ -173,21 +208,21 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
-# ─── 2. Run migrations ───
-echo "[3/8] Running database migrations..."
+# ─── 3. Run migrations ───
+echo "[4/8] Running database migrations..."
 cd "$ROOT/backend" && go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest \
   -path migrations -database "postgres://sakura:sakura@localhost:5432/sakura_dcim?sslmode=disable" up 2>&1 || true
 
-# ─── 3. Install frontend dependencies if needed ───
+# ─── 4. Install frontend dependencies if needed ───
 if [ ! -d "$ROOT/web/node_modules" ]; then
-  echo "[4/8] Installing frontend dependencies..."
+  echo "[5/8] Installing frontend dependencies..."
   cd "$ROOT/web" && npm install
 else
-  echo "[4/8] Frontend dependencies already installed."
+  echo "[5/8] Frontend dependencies already installed."
 fi
 
-# ─── 4. Start backend ───
-echo "[5/8] Starting backend on port ${BACKEND_PORT}..."
+# ─── 5. Start backend ───
+echo "[6/8] Starting backend on port ${BACKEND_PORT}..."
 cd "$ROOT/backend" && go run ./cmd/server &
 BACKEND_PID=$!
 
@@ -204,8 +239,8 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
-# ─── 5. Build KVM Docker image ───
-echo "[6/8] Building KVM browser image..."
+# ─── 6. Build KVM Docker image ───
+echo "[7/8] Building KVM browser image..."
 if ! docker images --format '{{.Repository}}:{{.Tag}}' | grep -q 'sakura-dcim/kvm-browser:latest'; then
   docker build -t sakura-dcim/kvm-browser:latest "$ROOT/docker/kvm-browser/"
   echo "  KVM image built."
@@ -213,8 +248,8 @@ else
   echo "  KVM image already exists."
 fi
 
-# ─── 6. Auto-create local dev agent ───
-echo "[7/8] Setting up local dev agent..."
+# ─── 7. Auto-create local dev agent ───
+echo "[8/8] Setting up local dev agent..."
 AGENT_CONFIG="$ROOT/agent/.dev-config.yaml"
 AGENT_PID=""
 
@@ -258,16 +293,16 @@ if [ -f "$AGENT_CONFIG" ]; then
   echo "  Starting local agent..."
   cd "$ROOT/agent" && go run ./cmd/agent -config "$AGENT_CONFIG" &
   AGENT_PID=$!
+  echo "  Agent PID: $AGENT_PID"
 fi
 
-# ─── 6. Start frontend ───
-echo "[8/8] Starting frontend..."
+# ─── 8. Start frontend ───
+echo ""
 
 # Detect host IP for display
 HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 HOST_IP="${HOST_IP:-localhost}"
 
-echo ""
 echo "========================================="
 echo "  Sakura DCIM is running!"
 echo ""
