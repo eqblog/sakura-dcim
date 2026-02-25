@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -15,6 +16,16 @@ import (
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )
+
+// getHostGateway returns the address used to reach the Docker host.
+// Defaults to "127.0.0.1" for native agent, set AGENT_HOST_GATEWAY=host.docker.internal
+// when the agent itself runs inside a Docker container.
+func getHostGateway() string {
+	if gw := os.Getenv("AGENT_HOST_GATEWAY"); gw != "" {
+		return gw
+	}
+	return "127.0.0.1"
+}
 
 const (
 	kvmImageName       = "sakura-dcim/kvm-browser:latest"
@@ -74,12 +85,19 @@ func (e *KVMExecutor) HandleKVMStart(raw json.RawMessage) (interface{}, error) {
 
 	targetURL := buildKVMTargetURL(p.BMCType, p.IPMIIP)
 	containerName := kvmContainerPrefix + p.SessionID
+	gateway := getHostGateway()
+
+	// When agent runs inside Docker, bind to all interfaces so the host port is reachable
+	portBind := "127.0.0.1"
+	if gateway != "127.0.0.1" {
+		portBind = "0.0.0.0"
+	}
 
 	// Start Docker container
 	args := []string{
 		"run", "-d",
 		"--name", containerName,
-		"-p", "127.0.0.1::5900",
+		"-p", fmt.Sprintf("%s::5900", portBind),
 		"-e", fmt.Sprintf("TARGET_URL=%s", targetURL),
 		"-e", "SCREEN_WIDTH=1280",
 		"-e", "SCREEN_HEIGHT=1024",
@@ -112,7 +130,7 @@ func (e *KVMExecutor) HandleKVMStart(raw json.RawMessage) (interface{}, error) {
 	}
 
 	// Wait for VNC to be ready
-	if err := waitForTCP("127.0.0.1:"+vncPort, 30*time.Second); err != nil {
+	if err := waitForTCP(gateway+":"+vncPort, 30*time.Second); err != nil {
 		exec.Command("docker", "rm", "-f", containerName).Run()
 		return nil, fmt.Errorf("VNC not ready: %w", err)
 	}
@@ -130,8 +148,15 @@ func (e *KVMExecutor) HandleKVMStart(raw json.RawMessage) (interface{}, error) {
 	e.sessions[p.SessionID] = session
 	e.mu.Unlock()
 
+	// Rewrite relay URL if running inside Docker (127.0.0.1 → gateway)
+	relayURL := p.RelayURL
+	if gateway != "127.0.0.1" {
+		relayURL = strings.ReplaceAll(relayURL, "127.0.0.1", gateway)
+		relayURL = strings.ReplaceAll(relayURL, "localhost", gateway)
+	}
+
 	// Start VNC relay in background
-	go e.relayVNC(sessionCtx, session, p.RelayURL)
+	go e.relayVNC(sessionCtx, session, relayURL, gateway)
 
 	e.logger.Info("KVM session started",
 		zap.String("session_id", p.SessionID),
@@ -174,7 +199,7 @@ func (e *KVMExecutor) stopSession(sessionID string) {
 	e.logger.Info("KVM session stopped", zap.String("session_id", sessionID))
 }
 
-func (e *KVMExecutor) relayVNC(ctx context.Context, session *kvmSession, relayURL string) {
+func (e *KVMExecutor) relayVNC(ctx context.Context, session *kvmSession, relayURL, gateway string) {
 	defer e.stopSession(session.sessionID)
 
 	u, err := url.Parse(relayURL)
@@ -190,7 +215,7 @@ func (e *KVMExecutor) relayVNC(ctx context.Context, session *kvmSession, relayUR
 	}
 	defer wsConn.Close()
 
-	vncAddr := "127.0.0.1:" + session.vncPort
+	vncAddr := gateway + ":" + session.vncPort
 	vncConn, err := net.DialTimeout("tcp", vncAddr, 5*time.Second)
 	if err != nil {
 		e.logger.Error("failed to connect to VNC", zap.Error(err), zap.String("addr", vncAddr))
