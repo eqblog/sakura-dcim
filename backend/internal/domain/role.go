@@ -33,6 +33,8 @@ const (
 	PermSettingsManage    = "settings.manage"
 	PermScriptManage      = "script.manage"
 	PermDiskLayoutManage  = "disk_layout.manage"
+	PermDiscoveryView     = "discovery.view"
+	PermDiscoveryManage   = "discovery.manage"
 )
 
 // AllPermissions lists every available permission
@@ -50,6 +52,7 @@ var AllPermissions = []string{
 	PermAuditView,
 	PermSettingsManage,
 	PermScriptManage, PermDiskLayoutManage,
+	PermDiscoveryView, PermDiscoveryManage,
 }
 
 type Role struct {

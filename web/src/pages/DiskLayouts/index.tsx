@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Typography, Table, Button, Space, Modal, Form, Input, message, Popconfirm } from 'antd';
+import { Card, Typography, Table, Button, Space, Modal, Form, Input, Select, Tag, message, Popconfirm } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { diskLayoutAPI } from '../../api';
@@ -37,6 +37,7 @@ const DiskLayoutsPage: React.FC = () => {
     form.setFieldsValue({
       ...record,
       layout: JSON.stringify(record.layout, null, 2),
+      tags: record.tags || [],
     });
     setModalOpen(true);
   };
@@ -136,6 +137,9 @@ const DiskLayoutsPage: React.FC = () => {
 }`}
               style={{ fontFamily: 'monospace', fontSize: 12 }}
             />
+          </Form.Item>
+          <Form.Item name="tags" label="Tags">
+            <Select mode="tags" placeholder="Press Enter to add tag" />
           </Form.Item>
         </Form>
       </Modal>

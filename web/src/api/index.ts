@@ -22,6 +22,8 @@ import type {
   IPPool,
   IPAddress,
   InventoryResult,
+  DiscoverySession,
+  DiscoveredServer,
 } from '../types';
 
 // Auth
@@ -242,6 +244,26 @@ export const ipPoolAPI = {
 export const auditAPI = {
   list: (params?: Record<string, any>) =>
     client.get<APIResponse<PaginatedResult<AuditLog>>>('/audit-logs', { params }),
+};
+
+// Discovery
+export const discoveryAPI = {
+  start: (agentId: string, data: { dhcp_range_start: string; dhcp_range_end: string; gateway: string; netmask: string }) =>
+    client.post<APIResponse<DiscoverySession>>(`/agents/${agentId}/discovery/start`, data),
+  stop: (agentId: string) =>
+    client.post<APIResponse>(`/agents/${agentId}/discovery/stop`),
+  status: (agentId: string) =>
+    client.get<APIResponse>(`/agents/${agentId}/discovery/status`),
+  listServers: (params?: Record<string, any>) =>
+    client.get<APIResponse<PaginatedResult<DiscoveredServer>>>('/discovery/servers', { params }),
+  getServer: (id: string) =>
+    client.get<APIResponse<DiscoveredServer>>(`/discovery/servers/${id}`),
+  approve: (id: string, data: any) =>
+    client.post<APIResponse>(`/discovery/servers/${id}/approve`, data),
+  reject: (id: string) =>
+    client.post<APIResponse>(`/discovery/servers/${id}/reject`),
+  deleteServer: (id: string) =>
+    client.delete<APIResponse>(`/discovery/servers/${id}`),
 };
 
 // Settings

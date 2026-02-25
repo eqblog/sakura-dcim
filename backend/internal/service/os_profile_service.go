@@ -17,6 +17,9 @@ func NewOSProfileService(repo repository.OSProfileRepository) *OSProfileService 
 }
 
 func (s *OSProfileService) Create(ctx context.Context, profile *domain.OSProfile) (*domain.OSProfile, error) {
+	if profile.Tags == nil {
+		profile.Tags = []string{}
+	}
 	if err := s.repo.Create(ctx, profile); err != nil {
 		return nil, err
 	}
@@ -48,6 +51,9 @@ func (s *OSProfileService) Update(ctx context.Context, id uuid.UUID, profile *do
 	existing.Template = profile.Template
 	existing.IsActive = profile.IsActive
 	existing.Tags = profile.Tags
+	if existing.Tags == nil {
+		existing.Tags = []string{}
+	}
 
 	if err := s.repo.Update(ctx, existing); err != nil {
 		return nil, err

@@ -8,6 +8,7 @@ import {
   Modal,
   Form,
   Input,
+  Select,
   ColorPicker,
   message,
   Popconfirm,
@@ -91,6 +92,7 @@ const TenantsPage: React.FC = () => {
     editForm.setFieldsValue({
       name: tenant.name,
       slug: tenant.slug,
+      parent_id: tenant.parent_id || undefined,
       custom_domain: tenant.custom_domain || '',
       logo_url: tenant.logo_url || '',
       favicon_url: tenant.favicon_url || '',
@@ -209,7 +211,7 @@ const TenantsPage: React.FC = () => {
     },
   ];
 
-  const tenantFormFields = (
+  const tenantFormFields = (isEdit: boolean = false) => (
     <>
       <Form.Item
         name="name"
@@ -227,6 +229,15 @@ const TenantsPage: React.FC = () => {
         ]}
       >
         <Input placeholder="acme-corp" />
+      </Form.Item>
+      <Form.Item name="parent_id" label="Parent Tenant">
+        <Select
+          allowClear
+          placeholder="None (top-level)"
+          options={(data?.items || [])
+            .filter((t) => !isEdit || t.id !== editingTenant?.id)
+            .map((t) => ({ label: t.name, value: t.id }))}
+        />
       </Form.Item>
       <Form.Item name="custom_domain" label="Custom Domain">
         <Input placeholder="panel.acme.com" />
@@ -285,7 +296,7 @@ const TenantsPage: React.FC = () => {
         destroyOnClose
       >
         <Form form={createForm} layout="vertical" onFinish={handleCreate}>
-          {tenantFormFields}
+          {tenantFormFields(false)}
           <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
             <Space>
               <Button onClick={() => { setCreateModalOpen(false); createForm.resetFields(); }}>
@@ -312,7 +323,7 @@ const TenantsPage: React.FC = () => {
         destroyOnClose
       >
         <Form form={editForm} layout="vertical" onFinish={handleUpdate}>
-          {tenantFormFields}
+          {tenantFormFields(true)}
           <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
             <Space>
               <Button onClick={() => { setEditModalOpen(false); setEditingTenant(null); editForm.resetFields(); }}>

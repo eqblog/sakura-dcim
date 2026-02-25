@@ -20,7 +20,7 @@ func NewIPPoolRepo(db *pgxpool.Pool) *IPPoolRepo {
 func (r *IPPoolRepo) Create(ctx context.Context, pool *domain.IPPool) error {
 	return r.db.QueryRow(ctx,
 		`INSERT INTO ip_pools (id, tenant_id, network, gateway, description)
-		 VALUES (gen_random_uuid(), $1, $2, $3, $4)
+		 VALUES (gen_random_uuid(), $1, $2::cidr, $3::inet, $4)
 		 RETURNING id`,
 		pool.TenantID, pool.Network, pool.Gateway, pool.Description,
 	).Scan(&pool.ID)
@@ -71,7 +71,7 @@ func (r *IPPoolRepo) List(ctx context.Context, tenantID *uuid.UUID) ([]domain.IP
 
 func (r *IPPoolRepo) Update(ctx context.Context, pool *domain.IPPool) error {
 	_, err := r.db.Exec(ctx,
-		`UPDATE ip_pools SET network = $2, gateway = $3, description = $4, tenant_id = $5
+		`UPDATE ip_pools SET network = $2::cidr, gateway = $3::inet, description = $4, tenant_id = $5
 		 WHERE id = $1`,
 		pool.ID, pool.Network, pool.Gateway, pool.Description, pool.TenantID)
 	return err

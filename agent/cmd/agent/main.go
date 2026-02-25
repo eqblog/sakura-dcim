@@ -45,8 +45,8 @@ func main() {
 	solExec := executor.NewSOLExecutor(logger)
 	pxeInvExec := executor.NewPXEInventoryExecutor(logger, ipmiExec, pxeExec)
 
-	// Create WebSocket client
-	wsClient := client.NewWSClient(cfg, logger, map[string]client.ActionHandler{
+	// Build handler map
+	handlers := map[string]client.ActionHandler{
 		"ipmi.power.on":     ipmiExec.HandlePowerOn,
 		"ipmi.power.off":    ipmiExec.HandlePowerOff,
 		"ipmi.power.reset":  ipmiExec.HandlePowerReset,
@@ -65,7 +65,15 @@ func main() {
 		"switch.provision":  switchExec.HandleSwitchProvision,
 		"switch.status":     switchExec.HandleSwitchStatus,
 		"snmp.poll":         snmpExec.HandleSNMPPoll,
-	})
+	}
+
+	// Create WebSocket client
+	wsClient := client.NewWSClient(cfg, logger, handlers)
+
+	// Discovery executor (needs wsClient for sending events back to panel)
+	discoveryExec := executor.NewDiscoveryExecutor(logger, wsClient)
+	handlers["discovery.start"] = discoveryExec.HandleDiscoveryStart
+	handlers["discovery.stop"] = discoveryExec.HandleDiscoveryStop
 
 	// Config hot-reload watcher
 	cfgWatcher := config.NewWatcher(*configPath, cfg, logger)

@@ -50,7 +50,7 @@ func (r *InstallTaskRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.In
 func (r *InstallTaskRepo) GetActiveByServerID(ctx context.Context, serverID uuid.UUID) (*domain.InstallTask, error) {
 	query := `SELECT id, server_id, os_profile_id, disk_layout_id, raid_level, status,
 		root_password_hash, ssh_keys, progress, log, started_at, completed_at, created_at
-		FROM install_tasks WHERE server_id = $1 AND status NOT IN ('completed', 'failed')
+		FROM install_tasks WHERE server_id = $1
 		ORDER BY created_at DESC LIMIT 1`
 
 	var t domain.InstallTask

@@ -83,6 +83,8 @@ func main() {
 	inventoryRepo := postgres.NewInventoryRepo(db)
 	ipPoolRepo := postgres.NewIPPoolRepo(db)
 	ipAddressRepo := postgres.NewIPAddressRepo(db)
+	discoverySessionRepo := postgres.NewDiscoverySessionRepo(db)
+	discoveredServerRepo := postgres.NewDiscoveredServerRepo(db)
 
 	// WebSocket Hub
 	hub := ws.NewHub(logger)
@@ -105,6 +107,7 @@ func main() {
 	bandwidthService := service.NewBandwidthService(switchRepo, switchPortRepo, hub, logger)
 	inventoryService := service.NewInventoryService(inventoryRepo, serverRepo, hub, logger)
 	ipService := service.NewIPService(ipPoolRepo, ipAddressRepo)
+	discoveryService := service.NewDiscoveryService(discoverySessionRepo, discoveredServerRepo, serverRepo, agentRepo, hub, logger)
 
 	// Wire InfluxDB into bandwidth service
 	if bandwidthInflux != nil {
@@ -126,6 +129,9 @@ func main() {
 
 	// Register inventory result event handler
 	hub.OnEvent(ws.ActionInventoryResult, inventoryService.HandleInventoryResultEvent)
+
+	// Register discovery result event handler
+	hub.OnEvent(ws.ActionDiscoveryResult, discoveryService.HandleDiscoveryResultEvent)
 
 	// Gin
 	gin.SetMode(cfg.Server.Mode)
@@ -217,6 +223,12 @@ func main() {
 	kvmHandler := handler.NewKVMHandler(kvmService, logger)
 	kvmHandler.RegisterRoutes(protected.Group("", middleware.RequirePermission(roleRepo, domain.PermIPMIKVM)))
 	kvmHandler.RegisterPublicRoutes(r)
+
+	discoveryHandler := handler.NewDiscoveryHandler(discoveryService)
+	discoveryHandler.RegisterRoutes(
+		protected.Group("", middleware.RequirePermission(roleRepo, domain.PermDiscoveryView)),
+		protected.Group("", middleware.RequirePermission(roleRepo, domain.PermDiscoveryManage)),
+	)
 
 	// Agent WebSocket endpoint (separate auth)
 	r.GET("/api/v1/agents/ws", func(c *gin.Context) {

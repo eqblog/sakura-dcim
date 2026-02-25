@@ -142,6 +142,9 @@ const OSProfilesPage: React.FC = () => {
           <Form.Item name="template" label="Template Content">
             <TextArea rows={12} placeholder="Paste your Kickstart / Preseed / cloud-init template here..." style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </Form.Item>
+          <Form.Item name="tags" label="Tags">
+            <Select mode="tags" placeholder="Press Enter to add tag" />
+          </Form.Item>
           <Form.Item name="is_active" label="Active" valuePropName="checked">
             <Switch />
           </Form.Item>

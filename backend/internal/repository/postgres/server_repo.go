@@ -20,13 +20,21 @@ func NewServerRepo(db *pgxpool.Pool) *ServerRepo {
 	return &ServerRepo{db: db}
 }
 
+// inetOrNil converts an empty string to nil for PostgreSQL INET columns.
+func inetOrNil(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
 func (r *ServerRepo) Create(ctx context.Context, server *domain.Server) error {
 	query := `INSERT INTO servers (id, tenant_id, agent_id, hostname, label, status, primary_ip, ipmi_ip, ipmi_user, ipmi_pass, tags, notes, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)`
 	now := time.Now()
 	_, err := r.db.Exec(ctx, query,
 		server.ID, server.TenantID, server.AgentID, server.Hostname, server.Label,
-		server.Status, server.PrimaryIP, server.IPMIIP, server.IPMIUser, server.IPMIPass,
+		server.Status, inetOrNil(server.PrimaryIP), inetOrNil(server.IPMIIP), server.IPMIUser, server.IPMIPass,
 		server.Tags, server.Notes, now)
 	if err == nil {
 		server.CreatedAt = now
@@ -36,7 +44,8 @@ func (r *ServerRepo) Create(ctx context.Context, server *domain.Server) error {
 }
 
 func (r *ServerRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Server, error) {
-	query := `SELECT id, tenant_id, agent_id, hostname, label, status, primary_ip, ipmi_ip, ipmi_user, ipmi_pass,
+	query := `SELECT id, tenant_id, agent_id, hostname, label, status,
+		COALESCE(primary_ip::text,''), COALESCE(ipmi_ip::text,''), ipmi_user, ipmi_pass,
 		cpu_model, cpu_cores, ram_mb, tags, notes, created_at, updated_at
 		FROM servers WHERE id = $1`
 
@@ -100,7 +109,8 @@ func (r *ServerRepo) List(ctx context.Context, params domain.ServerListParams) (
 	}
 	offset := (params.Page - 1) * params.PageSize
 
-	selectQuery := fmt.Sprintf(`SELECT id, tenant_id, agent_id, hostname, label, status, primary_ip, ipmi_ip,
+	selectQuery := fmt.Sprintf(`SELECT id, tenant_id, agent_id, hostname, label, status,
+		COALESCE(primary_ip::text,''), COALESCE(ipmi_ip::text,''),
 		cpu_model, cpu_cores, ram_mb, tags, notes, created_at, updated_at
 		FROM servers %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, where, argIdx, argIdx+1)
 	args = append(args, params.PageSize, offset)
@@ -145,7 +155,7 @@ func (r *ServerRepo) Update(ctx context.Context, server *domain.Server) error {
 	now := time.Now()
 	_, err := r.db.Exec(ctx, query,
 		server.ID, server.Hostname, server.Label, server.AgentID,
-		server.PrimaryIP, server.IPMIIP, server.IPMIUser, server.IPMIPass,
+		inetOrNil(server.PrimaryIP), inetOrNil(server.IPMIIP), server.IPMIUser, server.IPMIPass,
 		server.Tags, server.Notes, now)
 	if err == nil {
 		server.UpdatedAt = now

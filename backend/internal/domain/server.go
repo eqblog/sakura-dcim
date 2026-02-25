@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/lib/pq"
 )
 
 type ServerStatus string
@@ -34,7 +33,7 @@ type Server struct {
 	CPUCores int    `json:"cpu_cores" db:"cpu_cores"`
 	RAMMB    int64  `json:"ram_mb" db:"ram_mb"`
 	// Tags
-	Tags pq.StringArray `json:"tags" db:"tags"`
+	Tags []string `json:"tags" db:"tags"`
 	// Metadata
 	Notes     string    `json:"notes" db:"notes"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`

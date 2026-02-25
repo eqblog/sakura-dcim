@@ -21,7 +21,7 @@ func NewIPAddressRepo(db *pgxpool.Pool) *IPAddressRepo {
 func (r *IPAddressRepo) Create(ctx context.Context, addr *domain.IPAddress) error {
 	return r.db.QueryRow(ctx,
 		`INSERT INTO ip_addresses (id, pool_id, address, server_id, status, note)
-		 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)
+		 VALUES (gen_random_uuid(), $1, $2::inet, $3, $4, $5)
 		 RETURNING id`,
 		addr.PoolID, addr.Address, addr.ServerID, addr.Status, addr.Note,
 	).Scan(&addr.ID)

@@ -24,6 +24,7 @@ import IPManagementPage from './pages/IPManagement';
 import RolesPage from './pages/Roles';
 import ResellerDashboard from './pages/ResellerDashboard';
 import APIDocsPage from './pages/APIDocs';
+import DiscoveryPage from './pages/Discovery';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuthStore();
@@ -73,6 +74,7 @@ const App: React.FC = () => {
               <Route path="servers/:id" element={<ServerDetailPage />} />
               <Route path="agents" element={<AgentListPage />} />
               <Route path="agents/:id" element={<AgentDetailPage />} />
+              <Route path="discovery" element={<DiscoveryPage />} />
               <Route path="os-profiles" element={<OSProfilesPage />} />
               <Route path="disk-layouts" element={<DiskLayoutsPage />} />
               <Route path="scripts" element={<ScriptsPage />} />

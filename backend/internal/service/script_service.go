@@ -17,6 +17,12 @@ func NewScriptService(repo repository.ScriptRepository) *ScriptService {
 }
 
 func (s *ScriptService) Create(ctx context.Context, script *domain.Script) (*domain.Script, error) {
+	if script.Tags == nil {
+		script.Tags = []string{}
+	}
+	if script.OSProfileIDs == nil {
+		script.OSProfileIDs = []string{}
+	}
 	if err := s.repo.Create(ctx, script); err != nil {
 		return nil, err
 	}
@@ -46,7 +52,13 @@ func (s *ScriptService) Update(ctx context.Context, id uuid.UUID, script *domain
 	existing.Content = script.Content
 	existing.RunOrder = script.RunOrder
 	existing.OSProfileIDs = script.OSProfileIDs
+	if existing.OSProfileIDs == nil {
+		existing.OSProfileIDs = []string{}
+	}
 	existing.Tags = script.Tags
+	if existing.Tags == nil {
+		existing.Tags = []string{}
+	}
 
 	if err := s.repo.Update(ctx, existing); err != nil {
 		return nil, err

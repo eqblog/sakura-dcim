@@ -25,8 +25,8 @@ import {
   EditOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { serverAPI } from '../../api';
-import type { Server, ServerStatus, PaginatedResult } from '../../types';
+import { serverAPI, agentAPI } from '../../api';
+import type { Server, ServerStatus, PaginatedResult, Agent } from '../../types';
 
 const { Title } = Typography;
 
@@ -48,6 +48,13 @@ const ServerListPage: React.FC = () => {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createForm] = Form.useForm();
   const [creating, setCreating] = useState(false);
+  const [agents, setAgents] = useState<Agent[]>([]);
+
+  useEffect(() => {
+    agentAPI.list({ page: 1, page_size: 200 }).then(({ data: resp }) => {
+      if (resp.success) setAgents(resp.data?.items || []);
+    });
+  }, []);
 
   useEffect(() => {
     fetchServers();
@@ -258,6 +265,13 @@ const ServerListPage: React.FC = () => {
           <Form.Item name="label" label="Label">
             <Input placeholder="Web Server 1" />
           </Form.Item>
+          <Form.Item name="agent_id" label="Agent">
+            <Select
+              allowClear
+              placeholder="Select agent"
+              options={agents.map((a) => ({ label: `${a.name} (${a.location || 'No location'})`, value: a.id }))}
+            />
+          </Form.Item>
           <Form.Item name="primary_ip" label="Primary IP">
             <Input placeholder="192.168.1.100" />
           </Form.Item>
@@ -269,6 +283,12 @@ const ServerListPage: React.FC = () => {
           </Form.Item>
           <Form.Item name="ipmi_pass" label="IPMI Password">
             <Input.Password placeholder="IPMI password" />
+          </Form.Item>
+          <Form.Item name="tags" label="Tags">
+            <Select mode="tags" placeholder="Press Enter to add tag" />
+          </Form.Item>
+          <Form.Item name="notes" label="Notes">
+            <Input.TextArea rows={3} placeholder="Additional notes" />
           </Form.Item>
           <Form.Item>
             <Space>

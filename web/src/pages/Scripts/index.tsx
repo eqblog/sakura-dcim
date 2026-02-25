@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Typography, Table, Button, Space, Modal, Form, Input, InputNumber, message, Popconfirm, Tag } from 'antd';
+import { Card, Typography, Table, Button, Space, Modal, Form, Input, InputNumber, Select, message, Popconfirm, Tag } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { scriptAPI } from '../../api';
-import type { Script } from '../../types';
+import { scriptAPI, osProfileAPI } from '../../api';
+import type { Script, OSProfile } from '../../types';
 
 const { Title } = Typography;
 const { TextArea } = Input;
@@ -14,6 +14,13 @@ const ScriptsPage: React.FC = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Script | null>(null);
   const [form] = Form.useForm();
+  const [osProfiles, setOsProfiles] = useState<OSProfile[]>([]);
+
+  useEffect(() => {
+    osProfileAPI.list().then(({ data: resp }) => {
+      if (resp.success) setOsProfiles(resp.data || []);
+    });
+  }, []);
 
   const fetchScripts = async () => {
     setLoading(true);
@@ -116,12 +123,22 @@ const ScriptsPage: React.FC = () => {
           <Form.Item name="run_order" label="Run Order">
             <InputNumber min={0} max={999} style={{ width: 120 }} />
           </Form.Item>
+          <Form.Item name="os_profile_ids" label="OS Profiles">
+            <Select
+              mode="multiple"
+              placeholder="Select applicable OS profiles"
+              options={osProfiles.map((p) => ({ label: `${p.name} (${p.os_family} ${p.version})`, value: p.id }))}
+            />
+          </Form.Item>
           <Form.Item name="content" label="Script Content" rules={[{ required: true }]}>
             <TextArea
               rows={16}
               placeholder="#!/bin/bash&#10;apt-get update&#10;apt-get install -y docker.io"
               style={{ fontFamily: 'monospace', fontSize: 12 }}
             />
+          </Form.Item>
+          <Form.Item name="tags" label="Tags">
+            <Select mode="tags" placeholder="Press Enter to add tag" />
           </Form.Item>
         </Form>
       </Modal>

@@ -109,6 +109,10 @@ func (s *ReinstallService) StartReinstall(ctx context.Context, serverID uuid.UUI
 	}
 
 	// Create install task
+	sshKeys := req.SSHKeys
+	if sshKeys == nil {
+		sshKeys = []string{}
+	}
 	task := &domain.InstallTask{
 		ServerID:         serverID,
 		OSProfileID:      req.OSProfileID,
@@ -116,7 +120,7 @@ func (s *ReinstallService) StartReinstall(ctx context.Context, serverID uuid.UUI
 		RAIDLevel:        raidLevel,
 		Status:           domain.InstallStatusPending,
 		RootPasswordHash: string(passwordHash),
-		SSHKeys:          req.SSHKeys,
+		SSHKeys:          sshKeys,
 		Progress:         0,
 		Log:              "",
 	}

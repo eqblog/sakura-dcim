@@ -277,3 +277,41 @@ export interface InventoryResult {
   components: ServerInventory[];
   collected_at?: string;
 }
+
+// Discovery
+export interface DiscoverySession {
+  id: string;
+  agent_id: string;
+  status: 'active' | 'stopped';
+  dhcp_range: string;
+  started_by?: string;
+  started_at: string;
+  stopped_at?: string;
+}
+
+export type DiscoveredServerStatus = 'pending' | 'approved' | 'rejected';
+
+export interface DiscoveredServer {
+  id: string;
+  session_id: string;
+  agent_id: string;
+  mac_address: string;
+  ip_address: string;
+  status: DiscoveredServerStatus;
+  system_vendor: string;
+  system_product: string;
+  system_serial: string;
+  cpu_model: string;
+  cpu_cores: number;
+  cpu_sockets: number;
+  ram_mb: number;
+  disk_count: number;
+  disk_total_gb: number;
+  nic_count: number;
+  raw_inventory: any;
+  bmc_ip: string;
+  approved_by?: string;
+  server_id?: string;
+  discovered_at: string;
+  updated_at: string;
+}

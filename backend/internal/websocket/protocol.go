@@ -86,6 +86,12 @@ const (
 	// SNMP
 	ActionSNMPPoll = "snmp.poll"
 	ActionSNMPData = "snmp.data"
+
+	// Discovery
+	ActionDiscoveryStart  = "discovery.start"
+	ActionDiscoveryStop   = "discovery.stop"
+	ActionDiscoveryResult = "discovery.result"
+	ActionDiscoveryStatus = "discovery.status"
 )
 
 // HeartbeatPayload is sent by the agent periodically

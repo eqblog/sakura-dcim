@@ -1,0 +1,83 @@
+#!/bin/busybox sh
+# Sakura DCIM Discovery initramfs PID 1
+set -e
+
+# Mount essential filesystems
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+mkdir -p /tmp /run
+
+# Parse kernel command line
+CALLBACK=""
+TOKEN=""
+SESSION=""
+for param in $(cat /proc/cmdline); do
+    case "$param" in
+        sakura.callback=*) CALLBACK="${param#sakura.callback=}" ;;
+        sakura.token=*)    TOKEN="${param#sakura.token=}" ;;
+        sakura.session=*)  SESSION="${param#sakura.session=}" ;;
+    esac
+done
+
+echo "=== Sakura DCIM Hardware Discovery ==="
+echo "Callback: ${CALLBACK}"
+echo "Session:  ${SESSION}"
+
+# Wait for network interfaces to appear
+sleep 2
+
+# Bring up all ethernet interfaces and run DHCP
+for iface in /sys/class/net/e*; do
+    ifname=$(basename "$iface")
+    echo "Bringing up $ifname..."
+    ip link set "$ifname" up
+    udhcpc -i "$ifname" -n -t 5 -T 3 -q 2>/dev/null || true
+done
+
+# Also try interfaces starting with 'eno', 'ens', 'enp'
+for iface in /sys/class/net/eno* /sys/class/net/ens* /sys/class/net/enp*; do
+    [ -d "$iface" ] || continue
+    ifname=$(basename "$iface")
+    ip link set "$ifname" up 2>/dev/null
+    udhcpc -i "$ifname" -n -t 5 -T 3 -q 2>/dev/null || true
+done
+
+sleep 1
+
+echo "Network configured. Running hardware scan..."
+
+# Run the scanner
+/usr/bin/sakura-scanner > /tmp/inventory.json 2>/tmp/scanner.log
+
+echo "Scan complete. Reporting to panel..."
+
+# Report results to the agent callback endpoint
+if [ -n "$CALLBACK" ] && [ -n "$TOKEN" ]; then
+    # Retry up to 3 times
+    for attempt in 1 2 3; do
+        HTTP_CODE=$(curl -s -o /tmp/report_response.txt -w "%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d @/tmp/inventory.json \
+            "${CALLBACK}?token=${TOKEN}" 2>/dev/null || echo "000")
+
+        if [ "$HTTP_CODE" = "200" ]; then
+            echo "Report sent successfully."
+            break
+        else
+            echo "Report attempt $attempt failed (HTTP $HTTP_CODE). Retrying..."
+            sleep 3
+        fi
+    done
+else
+    echo "WARNING: No callback URL or token provided."
+    echo "Scan result:"
+    cat /tmp/inventory.json
+fi
+
+echo "Discovery complete. Powering off in 5 seconds..."
+sleep 5
+
+# Power off
+poweroff -f

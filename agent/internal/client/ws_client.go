@@ -178,6 +178,31 @@ func (c *WSClient) sendResponse(id string, payload interface{}, errMsg string) {
 	}
 }
 
+// SendEvent sends an unsolicited event message to the panel.
+func (c *WSClient) SendEvent(action string, payload interface{}) {
+	msg := Message{
+		ID:      fmt.Sprintf("evt-%d", time.Now().UnixNano()),
+		Type:    "event",
+		Action:  action,
+		Payload: payload,
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		c.logger.Error("marshal event error", zap.Error(err))
+		return
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.conn != nil {
+		if err := c.conn.WriteMessage(websocket.TextMessage, data); err != nil {
+			c.logger.Error("send event error", zap.Error(err), zap.String("action", action))
+		}
+	}
+}
+
 func (c *WSClient) heartbeatLoop() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()

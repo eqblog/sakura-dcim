@@ -81,7 +81,7 @@ const ServerDetailPage: React.FC = () => {
   }
 
   const tabItems = [
-    { key: 'overview', label: 'Overview', children: <OverviewTab server={server} /> },
+    { key: 'overview', label: 'Overview', children: <OverviewTab server={server} onUpdated={setServer} /> },
     { key: 'power', label: 'Power', children: <PowerTab serverId={server.id} /> },
     { key: 'sensors', label: 'Sensors', children: <SensorsTab serverId={server.id} /> },
     { key: 'kvm', label: 'KVM', children: <KvmTab serverId={server.id} /> },

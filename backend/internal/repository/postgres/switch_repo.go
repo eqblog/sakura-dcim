@@ -33,7 +33,7 @@ func (r *SwitchRepo) Create(ctx context.Context, sw *domain.Switch) error {
 }
 
 func (r *SwitchRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Switch, error) {
-	query := `SELECT id, agent_id, name, ip, vendor, model, snmp_community, snmp_version, ssh_user, ssh_pass, ssh_port, created_at, updated_at
+	query := `SELECT id, agent_id, name, ip::text, vendor, model, snmp_community, snmp_version, ssh_user, ssh_pass, ssh_port, created_at, updated_at
 		FROM switches WHERE id = $1`
 	row := r.db.QueryRow(ctx, query, id)
 	var sw domain.Switch
@@ -47,7 +47,7 @@ func (r *SwitchRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Switch,
 }
 
 func (r *SwitchRepo) List(ctx context.Context) ([]domain.Switch, error) {
-	query := `SELECT id, agent_id, name, ip, vendor, model, snmp_community, snmp_version, ssh_user, ssh_pass, ssh_port, created_at, updated_at
+	query := `SELECT id, agent_id, name, ip::text, vendor, model, snmp_community, snmp_version, ssh_user, ssh_pass, ssh_port, created_at, updated_at
 		FROM switches ORDER BY name`
 	rows, err := r.db.Query(ctx, query)
 	if err != nil {

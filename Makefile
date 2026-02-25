@@ -1,4 +1,4 @@
-.PHONY: start start-prod update stop dev-backend dev-web build migrate migrate-down docker-up docker-down clean test
+.PHONY: start start-prod update stop dev-backend dev-web build migrate migrate-down docker-up docker-down clean test deploy-agent
 
 # ============================================================
 # One-click commands
@@ -37,6 +37,12 @@ build-backend:
 
 build-agent:
 	cd agent && CGO_ENABLED=0 go build -o bin/sakura-agent ./cmd/agent
+
+build-agent-linux:
+	cd agent && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/sakura-agent-linux-amd64 ./cmd/agent
+
+deploy-agent:
+	bash scripts/deploy-agent.sh
 
 build-web:
 	cd web && npm run build

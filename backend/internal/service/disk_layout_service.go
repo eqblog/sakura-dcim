@@ -17,6 +17,9 @@ func NewDiskLayoutService(repo repository.DiskLayoutRepository) *DiskLayoutServi
 }
 
 func (s *DiskLayoutService) Create(ctx context.Context, layout *domain.DiskLayout) (*domain.DiskLayout, error) {
+	if layout.Tags == nil {
+		layout.Tags = []string{}
+	}
 	if err := s.repo.Create(ctx, layout); err != nil {
 		return nil, err
 	}
@@ -41,6 +44,9 @@ func (s *DiskLayoutService) Update(ctx context.Context, id uuid.UUID, layout *do
 	existing.Description = layout.Description
 	existing.Layout = layout.Layout
 	existing.Tags = layout.Tags
+	if existing.Tags == nil {
+		existing.Tags = []string{}
+	}
 
 	if err := s.repo.Update(ctx, existing); err != nil {
 		return nil, err

@@ -11,7 +11,7 @@ RUN apk add --no-cache \
     mesa-dri-gallium \
     && rm -rf /var/cache/apk/*
 
-RUN adduser -D -u 1000 kvm
+RUN adduser -D -u 1000 -G kvm kvmuser
 
 ENV DISPLAY=:99 \
     SCREEN_WIDTH=1280 \
@@ -23,7 +23,7 @@ ENV DISPLAY=:99 \
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
-USER kvm
+USER kvmuser
 EXPOSE 5900
 
 ENTRYPOINT ["/start.sh"]

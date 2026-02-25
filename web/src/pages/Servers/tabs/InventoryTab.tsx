@@ -136,7 +136,7 @@ const InventoryTab: React.FC<Props> = ({ serverId }) => {
     return <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>;
   }
 
-  if (!inventory || inventory.components.length === 0) {
+  if (!inventory || !inventory.components || inventory.components.length === 0) {
     return (
       <Empty description="No inventory data collected yet.">
         <Button type="primary" icon={<ScanOutlined />} onClick={triggerScan} loading={scanning}>

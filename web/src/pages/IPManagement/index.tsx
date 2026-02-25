@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Card, Typography, Table, Button, Space, Modal, Form, Input, Select, Tag, message, Popconfirm, Progress } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { ipPoolAPI } from '../../api';
-import type { IPPool, IPAddress } from '../../types';
+import { ipPoolAPI, tenantAPI } from '../../api';
+import type { IPPool, IPAddress, Tenant } from '../../types';
 
 const { Title } = Typography;
 
@@ -27,6 +27,13 @@ const IPManagementPage: React.FC = () => {
   const [addrModalOpen, setAddrModalOpen] = useState(false);
   const [editingAddr, setEditingAddr] = useState<IPAddress | null>(null);
   const [addrForm] = Form.useForm();
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+
+  useEffect(() => {
+    tenantAPI.list({ page: 1, page_size: 200 }).then(({ data: resp }) => {
+      if (resp.success) setTenants(resp.data?.items || []);
+    });
+  }, []);
 
   const fetchPools = async () => {
     setLoading(true);
@@ -219,6 +226,13 @@ const IPManagementPage: React.FC = () => {
           </Form.Item>
           <Form.Item name="gateway" label="Gateway" rules={[{ required: true }]}>
             <Input placeholder="10.0.0.1" />
+          </Form.Item>
+          <Form.Item name="tenant_id" label="Tenant">
+            <Select
+              allowClear
+              placeholder="Select tenant (optional)"
+              options={tenants.map((t) => ({ label: t.name, value: t.id }))}
+            />
           </Form.Item>
           <Form.Item name="description" label="Description">
             <Input placeholder="Production subnet" />

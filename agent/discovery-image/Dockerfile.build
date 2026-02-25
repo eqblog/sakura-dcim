@@ -1,0 +1,87 @@
+# Multi-stage build for Sakura DCIM Discovery initramfs
+# Produces: vmlinuz-discovery + initrd-discovery.img
+
+# Stage 1: Build the Go scanner binary (static)
+FROM golang:1.22-alpine AS scanner-build
+WORKDIR /src
+COPY scanner/ .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /sakura-scanner .
+
+# Stage 2: Build the initramfs
+FROM alpine:3.21 AS rootfs
+
+# Install required tools for hardware scanning
+RUN apk add --no-cache \
+    busybox-static \
+    dmidecode \
+    lsblk \
+    lspci \
+    curl \
+    ipmitool \
+    util-linux \
+    pciutils \
+    usbutils \
+    iproute2 \
+    coreutils
+
+# Create rootfs structure
+RUN mkdir -p /rootfs/bin /rootfs/sbin /rootfs/usr/bin /rootfs/usr/sbin \
+    /rootfs/lib /rootfs/lib64 /rootfs/proc /rootfs/sys /rootfs/dev \
+    /rootfs/tmp /rootfs/run /rootfs/etc /rootfs/var
+
+# Copy busybox (static)
+RUN cp /bin/busybox.static /rootfs/bin/busybox && \
+    cd /rootfs/bin && \
+    for cmd in sh cat echo ls mount umount mkdir sleep ip ifconfig \
+               udhcpc poweroff reboot basename; do \
+        ln -s busybox "$cmd"; \
+    done && \
+    cd /rootfs/sbin && \
+    for cmd in poweroff reboot; do \
+        ln -sf ../bin/busybox "$cmd"; \
+    done
+
+# Copy scanner binary
+COPY --from=scanner-build /sakura-scanner /rootfs/usr/bin/sakura-scanner
+
+# Copy needed binaries and their library dependencies
+RUN for bin in dmidecode lsblk lspci curl ipmitool nproc ip; do \
+        BIN_PATH=$(which "$bin" 2>/dev/null) && \
+        if [ -n "$BIN_PATH" ]; then \
+            cp "$BIN_PATH" "/rootfs/usr/bin/" && \
+            for lib in $(ldd "$BIN_PATH" 2>/dev/null | grep -o '/[^ ]*'); do \
+                dir=$(dirname "$lib") && \
+                mkdir -p "/rootfs$dir" && \
+                cp -n "$lib" "/rootfs$lib" 2>/dev/null || true; \
+            done; \
+        fi; \
+    done
+
+# Copy additional shared libs that might be needed
+RUN cp -a /lib/ld-musl-*.so.1 /rootfs/lib/ 2>/dev/null || true && \
+    cp -a /usr/lib/libcurl*.so* /rootfs/usr/lib/ 2>/dev/null || true && \
+    cp -a /usr/lib/libssl*.so* /rootfs/usr/lib/ 2>/dev/null || true && \
+    cp -a /usr/lib/libcrypto*.so* /rootfs/usr/lib/ 2>/dev/null || true && \
+    cp -a /usr/lib/libz*.so* /rootfs/usr/lib/ 2>/dev/null || true && \
+    cp -a /usr/lib/libnghttp2*.so* /rootfs/usr/lib/ 2>/dev/null || true
+
+# Copy init script
+COPY init /rootfs/init
+RUN chmod +x /rootfs/init
+
+# Copy resolv.conf for DNS
+RUN echo "nameserver 8.8.8.8" > /rootfs/etc/resolv.conf
+
+# Create the cpio initramfs
+RUN cd /rootfs && find . | cpio -o -H newc | gzip -9 > /initrd-discovery.img
+
+# Copy the Alpine kernel (for PXE boot)
+RUN cp /boot/vmlinuz-* /vmlinuz-discovery 2>/dev/null || \
+    cp /boot/vmlinuz /vmlinuz-discovery 2>/dev/null || \
+    echo "NOTE: Kernel must be provided separately"
+
+# Stage 3: Extract artifacts
+FROM alpine:3.21
+COPY --from=rootfs /initrd-discovery.img /output/initrd-discovery.img
+COPY --from=rootfs /vmlinuz-discovery /output/vmlinuz-discovery 2>/dev/null || true
+CMD ["echo", "Discovery image built. Extract from /output/"]

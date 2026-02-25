@@ -19,6 +19,8 @@ import {
   ReloadOutlined,
   SyncOutlined,
   CopyOutlined,
+  EditOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import { agentAPI } from '../../api';
 import type { Agent, PaginatedResult } from '../../types';
@@ -36,6 +38,12 @@ const AgentListPage: React.FC = () => {
   const [createForm] = Form.useForm();
   const [creating, setCreating] = useState(false);
   const [newAgentToken, setNewAgentToken] = useState<string | null>(null);
+
+  // Edit modal
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editForm] = Form.useForm();
+  const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetchAgents();
@@ -66,6 +74,35 @@ const AgentListPage: React.FC = () => {
       message.error('Failed to create agent');
     }
     setCreating(false);
+  };
+
+  const handleEdit = (agent: Agent) => {
+    setEditingAgent(agent);
+    editForm.setFieldsValue({
+      name: agent.name,
+      location: agent.location,
+      capabilities: agent.capabilities || [],
+    });
+    setEditModalOpen(true);
+  };
+
+  const handleUpdate = async (values: any) => {
+    if (!editingAgent) return;
+    setSaving(true);
+    try {
+      const { data: resp } = await agentAPI.update(editingAgent.id, values);
+      if (resp.success) {
+        message.success('Agent updated');
+        setEditModalOpen(false);
+        setEditingAgent(null);
+        fetchAgents();
+      } else {
+        message.error(resp.error || 'Update failed');
+      }
+    } catch {
+      message.error('Failed to update agent');
+    }
+    setSaving(false);
   };
 
   const handleDelete = async (id: string) => {
@@ -114,10 +151,14 @@ const AgentListPage: React.FC = () => {
     {
       title: 'Actions',
       key: 'actions',
+      width: 120,
       render: (_: any, record: Agent) => (
-        <Popconfirm title="Delete this agent?" onConfirm={() => handleDelete(record.id)}>
-          <Button type="text" size="small" danger>Delete</Button>
-        </Popconfirm>
+        <Space size="small">
+          <Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
+          <Popconfirm title="Delete this agent?" onConfirm={() => handleDelete(record.id)}>
+            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
@@ -199,6 +240,42 @@ const AgentListPage: React.FC = () => {
             </Form.Item>
           </Form>
         )}
+      </Modal>
+
+      {/* Edit Modal */}
+      <Modal
+        title="Edit Agent"
+        open={editModalOpen}
+        onCancel={() => { setEditModalOpen(false); setEditingAgent(null); }}
+        footer={null}
+        destroyOnClose
+      >
+        <Form form={editForm} layout="vertical" onFinish={handleUpdate}>
+          <Form.Item name="name" label="Name" rules={[{ required: true }]}>
+            <Input placeholder="DC1 Agent" />
+          </Form.Item>
+          <Form.Item name="location" label="Location">
+            <Input placeholder="Frankfurt, DE" />
+          </Form.Item>
+          <Form.Item name="capabilities" label="Capabilities">
+            <Select
+              mode="multiple"
+              placeholder="Select capabilities"
+              options={[
+                { value: 'ipmi', label: 'IPMI' },
+                { value: 'pxe', label: 'PXE' },
+                { value: 'kvm', label: 'KVM' },
+                { value: 'snmp', label: 'SNMP' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
+            <Space>
+              <Button onClick={() => { setEditModalOpen(false); setEditingAgent(null); }}>Cancel</Button>
+              <Button type="primary" htmlType="submit" loading={saving}>Save</Button>
+            </Space>
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );

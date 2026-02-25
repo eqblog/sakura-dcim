@@ -135,3 +135,19 @@ type SwitchPortRepository interface {
 	Update(ctx context.Context, port *domain.SwitchPort) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
+
+type DiscoverySessionRepository interface {
+	Create(ctx context.Context, session *domain.DiscoverySession) error
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.DiscoverySession, error)
+	GetActiveByAgentID(ctx context.Context, agentID uuid.UUID) (*domain.DiscoverySession, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status domain.DiscoverySessionStatus) error
+}
+
+type DiscoveredServerRepository interface {
+	Upsert(ctx context.Context, ds *domain.DiscoveredServer) error
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.DiscoveredServer, error)
+	List(ctx context.Context, params domain.DiscoveredServerListParams) (*domain.PaginatedResult[domain.DiscoveredServer], error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status domain.DiscoveredServerStatus) error
+	SetServerID(ctx context.Context, id uuid.UUID, serverID uuid.UUID) error
+	Delete(ctx context.Context, id uuid.UUID) error
+}
