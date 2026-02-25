@@ -458,7 +458,7 @@ func (s *SwitchService) GetVLANSummary(ctx context.Context, switchID uuid.UUID) 
 		}
 	}
 
-	var result []domain.VLANSummary
+	result := make([]domain.VLANSummary, 0)
 	for vid, portNames := range vlanMap {
 		result = append(result, domain.VLANSummary{
 			VlanID:    vid,

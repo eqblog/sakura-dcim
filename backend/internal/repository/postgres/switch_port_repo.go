@@ -104,7 +104,7 @@ func scanSwitchPort(row pgx.Row) (*domain.SwitchPort, error) {
 }
 
 func collectSwitchPorts(rows pgx.Rows) ([]domain.SwitchPort, error) {
-	var ports []domain.SwitchPort
+	ports := make([]domain.SwitchPort, 0)
 	for rows.Next() {
 		var p domain.SwitchPort
 		if err := rows.Scan(&p.ID, &p.SwitchID, &p.ServerID, &p.PortIndex, &p.PortName,
