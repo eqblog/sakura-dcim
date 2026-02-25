@@ -144,7 +144,7 @@ const ReinstallTab: React.FC<Props> = ({ serverId }) => {
           type="info"
           showIcon
           icon={<LoadingOutlined />}
-          message="OS Installation In Progress"
+          title="OS Installation In Progress"
           description={`Status: ${statusLabels[activeTask.status]}`}
           style={{ marginBottom: 24 }}
         />
@@ -180,7 +180,7 @@ const ReinstallTab: React.FC<Props> = ({ serverId }) => {
           type={isSuccess ? 'success' : 'error'}
           showIcon
           icon={isSuccess ? <CheckCircleOutlined /> : <CloseCircleOutlined />}
-          message={isSuccess ? 'Installation Completed' : 'Installation Failed'}
+          title={isSuccess ? 'Installation Completed' : 'Installation Failed'}
           description={
             <Space direction="vertical">
               <Text>Started: {activeTask.started_at ? new Date(activeTask.started_at).toLocaleString() : '-'}</Text>
@@ -277,7 +277,7 @@ const ReinstallTab: React.FC<Props> = ({ serverId }) => {
           <Alert
             type="warning"
             showIcon
-            message="This will erase all data on the server"
+            title="This will erase all data on the server"
             description="The server will be rebooted and reinstalled with the selected operating system. All existing data will be lost."
             style={{ marginBottom: 16 }}
           />

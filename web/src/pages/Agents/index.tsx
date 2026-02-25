@@ -197,7 +197,7 @@ const AgentListPage: React.FC = () => {
         {newAgentToken ? (
           <div>
             <Alert
-              message="Agent Created Successfully"
+              title="Agent Created Successfully"
               description="Save this token now. It will not be shown again."
               type="success"
               showIcon

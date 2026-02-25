@@ -319,7 +319,7 @@ const DiscoveryPage: React.FC = () => {
                 <Alert
                   type="info"
                   showIcon
-                  message="Discovery is active. Servers will appear below as they PXE boot and report hardware."
+                  title="Discovery is active. Servers will appear below as they PXE boot and report hardware."
                   style={{ marginBottom: 0 }}
                 />
                 <Button

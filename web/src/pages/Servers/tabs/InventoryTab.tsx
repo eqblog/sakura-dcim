@@ -156,7 +156,7 @@ const InventoryTab: React.FC<Props> = ({ serverId }) => {
           <Alert
             type="info"
             showIcon
-            message="PXE scan in progress"
+            title="PXE scan in progress"
             description="The server is rebooting into inventory scanning mode. Hardware data will appear here automatically when the scan completes."
             style={{ marginBottom: 16, maxWidth: 500, margin: '0 auto 16px' }}
           />
@@ -188,7 +188,7 @@ const InventoryTab: React.FC<Props> = ({ serverId }) => {
         <Alert
           type="info"
           showIcon
-          message="PXE scan in progress — waiting for hardware report from the server..."
+          title="PXE scan in progress — waiting for hardware report from the server..."
           style={{ marginBottom: 16 }}
           closable
           onClose={() => setScanInitiated(false)}

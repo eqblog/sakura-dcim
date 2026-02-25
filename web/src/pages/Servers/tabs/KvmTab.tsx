@@ -63,8 +63,8 @@ const KvmTab: React.FC<KvmTabProps> = ({ serverId }) => {
       const rfb = new RFB(canvasRef.current, wsUrl, {
         scaleViewport: true,
         resizeSession: false,
-        showDotCursor: true,
       });
+      rfb.showDotCursor = true;
 
       rfb.addEventListener('connect', () => {
         setStatus('connected');
@@ -153,12 +153,12 @@ const KvmTab: React.FC<KvmTabProps> = ({ serverId }) => {
       </div>
 
       {error && (
-        <Alert type="error" message={error} closable onClose={() => setError('')} style={{ marginBottom: 12 }} />
+        <Alert type="error" title={error} closable onClose={() => setError('')} style={{ marginBottom: 12 }} />
       )}
 
       {(status === 'starting' || status === 'connecting') && (
         <div style={{ textAlign: 'center', padding: 60 }}>
-          <Spin size="large" tip={status === 'starting' ? 'Starting KVM container...' : 'Connecting to VNC...'} />
+          <Spin size="large" description={status === 'starting' ? 'Starting KVM container...' : 'Connecting to VNC...'} />
         </div>
       )}
 

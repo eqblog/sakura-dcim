@@ -149,7 +149,7 @@ echo.
 echo =========================================
 echo   Sakura DCIM is running!
 echo.
-echo   Frontend  : http://localhost:5173
+echo   Frontend  : https://localhost:5173
 echo   Backend   : http://localhost:%BACKEND_PORT%
 echo   Agent     : Docker (sakura-dev-agent)
 echo.
