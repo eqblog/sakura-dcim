@@ -70,9 +70,11 @@ func (h *KVMHandler) StartKVM(c *gin.Context) {
 		realHost = c.Request.Host
 	}
 
-	// Build panel base URL for agent relay (agent → backend direct, use c.Request.Host)
+	// Build panel base URL for agent relay (agent → backend direct, not via proxy).
+	// Only use wss:// if the backend itself has TLS; ignore X-Forwarded-Proto since
+	// that reflects the browser→proxy link, not the agent→backend link.
 	relayScheme := "ws"
-	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+	if c.Request.TLS != nil {
 		relayScheme = "wss"
 	}
 	panelBaseURL := relayScheme + "://" + c.Request.Host
