@@ -3,11 +3,15 @@ package executor
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/crypto/ssh"
 )
 
 // SNMPExecutor handles SNMP polling of switch port traffic counters.
@@ -23,6 +27,10 @@ type SNMPPollPayload struct {
 	SwitchIP      string `json:"switch_ip"`
 	SNMPCommunity string `json:"snmp_community"`
 	SNMPVersion   string `json:"snmp_version"`
+	SSHUser       string `json:"ssh_user"`
+	SSHPass       string `json:"ssh_pass"`
+	SSHPort       int    `json:"ssh_port"`
+	Vendor        string `json:"vendor"`
 }
 
 type PortTraffic struct {
@@ -71,8 +79,18 @@ func (e *SNMPExecutor) HandleSNMPPoll(raw json.RawMessage) (interface{}, error) 
 		results[name] = parseSNMPWalk(string(out))
 	}
 
-	// Poll VLAN data: dot1dBasePortIfIndex (bridge port -> ifIndex) and dot1qPvid (bridge port -> PVID)
+	// Poll VLAN data via SNMP strategies
 	ifIndexToPvid := e.pollPortVLANs(version, p.SNMPCommunity, p.SwitchIP)
+
+	// If SNMP VLAN discovery failed and SSH credentials are available, try SSH fallback
+	if len(ifIndexToPvid) == 0 && p.SSHUser != "" && p.SSHPass != "" {
+		e.logger.Info("SNMP VLAN discovery failed, trying SSH fallback",
+			zap.String("vendor", p.Vendor), zap.String("switch_ip", p.SwitchIP))
+		sshVlans := e.pollVLANsViaSSH(p.SwitchIP, p.SSHPort, p.SSHUser, p.SSHPass, p.Vendor, results["ifDescr"])
+		if len(sshVlans) > 0 {
+			ifIndexToPvid = sshVlans
+		}
+	}
 
 	// Build port traffic data
 	var ports []PortTraffic
@@ -177,6 +195,140 @@ func (e *SNMPExecutor) pollPortVLANs(version, community, switchIP string) map[in
 
 	e.logger.Warn("no VLAN data discovered via SNMP", zap.String("switch_ip", switchIP))
 	return ifIndexToPvid
+}
+
+// pollVLANsViaSSH discovers VLAN-to-port mappings by SSHing into the switch and running CLI commands.
+// Returns ifIndex → VLAN ID mapping using port names from SNMP ifDescr to match.
+func (e *SNMPExecutor) pollVLANsViaSSH(host string, port int, user, pass, vendor string, ifDescrMap map[int]string) map[int]int {
+	if port == 0 {
+		port = 22
+	}
+
+	config := &ssh.ClientConfig{
+		User:            user,
+		Auth:            []ssh.AuthMethod{ssh.Password(pass)},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         10 * time.Second,
+	}
+
+	addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
+	client, err := ssh.Dial("tcp", addr, config)
+	if err != nil {
+		e.logger.Warn("SSH VLAN fallback: dial failed", zap.Error(err))
+		return nil
+	}
+	defer client.Close()
+
+	session, err := client.NewSession()
+	if err != nil {
+		e.logger.Warn("SSH VLAN fallback: session failed", zap.Error(err))
+		return nil
+	}
+	defer session.Close()
+
+	// Choose command based on vendor
+	cmd := "show vlan brief"
+	switch vendor {
+	case "juniper":
+		cmd = "show vlans brief"
+	case "sonic":
+		cmd = "show vlan brief"
+	case "cumulus":
+		cmd = "net show bridge vlan"
+	}
+
+	out, err := session.CombinedOutput(cmd)
+	if err != nil {
+		e.logger.Warn("SSH VLAN fallback: command failed", zap.String("cmd", cmd), zap.Error(err))
+		return nil
+	}
+
+	output := string(out)
+	e.logger.Info("SSH VLAN fallback: got output", zap.Int("bytes", len(output)))
+
+	// Build reverse map: normalized port name → ifIndex
+	nameToIfIndex := make(map[string]int)
+	for idx, name := range ifDescrMap {
+		nameToIfIndex[normalizePortName(name)] = idx
+	}
+
+	// Parse "show vlan brief" output (Cisco IOS/NX-OS/Arista format)
+	return parseShowVlanBrief(output, nameToIfIndex, e.logger)
+}
+
+// parseShowVlanBrief parses "show vlan brief" output and maps ports to VLAN IDs.
+// Format (Cisco NX-OS / IOS):
+//
+//	VLAN Name                             Status    Ports
+//	---- -------------------------------- --------- -------------------------------
+//	1    default                          active    Eth1/1, Eth1/2
+//	100  Production                       active    Eth1/3, Eth1/4
+func parseShowVlanBrief(output string, nameToIfIndex map[string]int, logger *zap.Logger) map[int]int {
+	result := make(map[int]int)
+	// Match lines: VLAN_ID  name  status  ports...
+	// The VLAN ID is at the start, ports are comma-separated at the end
+	vlanLineRe := regexp.MustCompile(`^\s*(\d+)\s+\S+\s+active\s+(.+)$`)
+	// Continuation lines (ports that overflow to next line, indented)
+	contLineRe := regexp.MustCompile(`^\s{20,}(.+)$`)
+
+	var currentVlan int
+	for _, line := range strings.Split(output, "\n") {
+		if m := vlanLineRe.FindStringSubmatch(line); m != nil {
+			vid, _ := strconv.Atoi(m[1])
+			currentVlan = vid
+			mapPortsToVlan(m[2], vid, nameToIfIndex, result)
+		} else if currentVlan > 0 {
+			if m := contLineRe.FindStringSubmatch(line); m != nil {
+				mapPortsToVlan(m[1], currentVlan, nameToIfIndex, result)
+			} else {
+				currentVlan = 0
+			}
+		}
+	}
+
+	if len(result) > 0 {
+		logger.Info("polled port VLANs via SSH show vlan brief", zap.Int("count", len(result)))
+	}
+	return result
+}
+
+// mapPortsToVlan parses a comma-separated port list and maps each to the VLAN ID.
+func mapPortsToVlan(portList string, vlanID int, nameToIfIndex map[string]int, result map[int]int) {
+	for _, p := range strings.Split(portList, ",") {
+		pName := normalizePortName(strings.TrimSpace(p))
+		if pName == "" {
+			continue
+		}
+		if ifIdx, ok := nameToIfIndex[pName]; ok {
+			result[ifIdx] = vlanID
+		}
+	}
+}
+
+// normalizePortName normalizes port names for comparison.
+// Cisco uses various abbreviations: Eth1/1, Ethernet1/1, Gi0/1, GigabitEthernet0/1, etc.
+func normalizePortName(name string) string {
+	name = strings.TrimSpace(name)
+	name = strings.ToLower(name)
+
+	// Common Cisco NX-OS abbreviations
+	replacements := []struct{ prefix, full string }{
+		{"ethernet", "eth"},
+		{"gigabitethernet", "gi"},
+		{"fastethernet", "fa"},
+		{"tengigabitethernet", "te"},
+		{"twentyfivegige", "twe"},
+		{"fortygigabitethernet", "fo"},
+		{"hundredgige", "hu"},
+		{"port-channel", "po"},
+	}
+	for _, r := range replacements {
+		if strings.HasPrefix(name, r.prefix) {
+			name = r.full + name[len(r.prefix):]
+			break
+		}
+	}
+	return name
 }
 
 // parseSNMPWalk parses snmpwalk output into port_index → value map.

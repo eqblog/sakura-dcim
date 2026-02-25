@@ -272,6 +272,10 @@ func (s *SwitchService) PollSNMP(ctx context.Context, switchID uuid.UUID) (map[s
 		"switch_ip":      sw.IP,
 		"snmp_community": sw.SNMPCommunity,
 		"snmp_version":   sw.SNMPVersion,
+		"ssh_user":       sw.SSHUser,
+		"ssh_pass":       sw.SSHPass,
+		"ssh_port":       sw.SSHPort,
+		"vendor":         sw.Vendor,
 	}
 
 	resp, err := s.hub.SendRequest(sw.AgentID, ws.ActionSNMPPoll, payload, 30*time.Second)
@@ -342,6 +346,10 @@ func (s *SwitchService) SyncPortsFromSNMP(ctx context.Context, switchID uuid.UUI
 		"switch_ip":      sw.IP,
 		"snmp_community": sw.SNMPCommunity,
 		"snmp_version":   sw.SNMPVersion,
+		"ssh_user":       sw.SSHUser,
+		"ssh_pass":       sw.SSHPass,
+		"ssh_port":       sw.SSHPort,
+		"vendor":         sw.Vendor,
 	}
 
 	resp, err := s.hub.SendRequest(sw.AgentID, ws.ActionSNMPPoll, payload, 30*time.Second)
