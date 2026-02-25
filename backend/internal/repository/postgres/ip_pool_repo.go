@@ -22,10 +22,12 @@ func (r *IPPoolRepo) Create(ctx context.Context, pool *domain.IPPool) error {
 		pool.Nameservers = []string{}
 	}
 	return r.db.QueryRow(ctx,
-		`INSERT INTO ip_pools (id, tenant_id, network, gateway, netmask, vrf, nameservers, description)
-		 VALUES (gen_random_uuid(), $1, $2::cidr, $3::inet, $4, $5, $6, $7)
+		`INSERT INTO ip_pools (id, tenant_id, network, gateway, netmask, vrf, nameservers, description,
+		                       priority, rdns_server, notes, switch_automation, vlan_id, vlan_range_start, vlan_range_end)
+		 VALUES (gen_random_uuid(), $1, $2::cidr, $3::inet, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		 RETURNING id`,
 		pool.TenantID, pool.Network, pool.Gateway, pool.Netmask, pool.VRF, pool.Nameservers, pool.Description,
+		pool.Priority, pool.RDNSServer, pool.Notes, pool.SwitchAutomation, pool.VlanID, pool.VlanRangeStart, pool.VlanRangeEnd,
 	).Scan(&pool.ID)
 }
 
@@ -33,10 +35,13 @@ func (r *IPPoolRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.IPPool,
 	pool := &domain.IPPool{}
 	err := r.db.QueryRow(ctx,
 		`SELECT p.id, p.tenant_id, p.network::text, host(p.gateway), p.netmask, p.vrf, p.nameservers, p.description,
+		        p.priority, p.rdns_server, p.notes, p.switch_automation, p.vlan_id, p.vlan_range_start, p.vlan_range_end,
 		        COALESCE((SELECT COUNT(*) FROM ip_addresses WHERE pool_id = p.id), 0) AS total_ips,
 		        COALESCE((SELECT COUNT(*) FROM ip_addresses WHERE pool_id = p.id AND status != 'available'), 0) AS used_ips
 		 FROM ip_pools p WHERE p.id = $1`, id,
-	).Scan(&pool.ID, &pool.TenantID, &pool.Network, &pool.Gateway, &pool.Netmask, &pool.VRF, &pool.Nameservers, &pool.Description, &pool.TotalIPs, &pool.UsedIPs)
+	).Scan(&pool.ID, &pool.TenantID, &pool.Network, &pool.Gateway, &pool.Netmask, &pool.VRF, &pool.Nameservers, &pool.Description,
+		&pool.Priority, &pool.RDNSServer, &pool.Notes, &pool.SwitchAutomation, &pool.VlanID, &pool.VlanRangeStart, &pool.VlanRangeEnd,
+		&pool.TotalIPs, &pool.UsedIPs)
 	if err != nil {
 		return nil, err
 	}
@@ -45,6 +50,7 @@ func (r *IPPoolRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.IPPool,
 
 func (r *IPPoolRepo) List(ctx context.Context, tenantID *uuid.UUID) ([]domain.IPPool, error) {
 	query := `SELECT p.id, p.tenant_id, p.network::text, host(p.gateway), p.netmask, p.vrf, p.nameservers, p.description,
+	                  p.priority, p.rdns_server, p.notes, p.switch_automation, p.vlan_id, p.vlan_range_start, p.vlan_range_end,
 	                  COALESCE((SELECT COUNT(*) FROM ip_addresses WHERE pool_id = p.id), 0) AS total_ips,
 	                  COALESCE((SELECT COUNT(*) FROM ip_addresses WHERE pool_id = p.id AND status != 'available'), 0) AS used_ips
 	           FROM ip_pools p`
@@ -64,7 +70,9 @@ func (r *IPPoolRepo) List(ctx context.Context, tenantID *uuid.UUID) ([]domain.IP
 	var pools []domain.IPPool
 	for rows.Next() {
 		var p domain.IPPool
-		if err := rows.Scan(&p.ID, &p.TenantID, &p.Network, &p.Gateway, &p.Netmask, &p.VRF, &p.Nameservers, &p.Description, &p.TotalIPs, &p.UsedIPs); err != nil {
+		if err := rows.Scan(&p.ID, &p.TenantID, &p.Network, &p.Gateway, &p.Netmask, &p.VRF, &p.Nameservers, &p.Description,
+			&p.Priority, &p.RDNSServer, &p.Notes, &p.SwitchAutomation, &p.VlanID, &p.VlanRangeStart, &p.VlanRangeEnd,
+			&p.TotalIPs, &p.UsedIPs); err != nil {
 			return nil, err
 		}
 		pools = append(pools, p)
@@ -77,9 +85,11 @@ func (r *IPPoolRepo) Update(ctx context.Context, pool *domain.IPPool) error {
 		pool.Nameservers = []string{}
 	}
 	_, err := r.db.Exec(ctx,
-		`UPDATE ip_pools SET network = $2::cidr, gateway = $3::inet, netmask = $4, vrf = $5, nameservers = $6, description = $7, tenant_id = $8
+		`UPDATE ip_pools SET network = $2::cidr, gateway = $3::inet, netmask = $4, vrf = $5, nameservers = $6, description = $7, tenant_id = $8,
+		        priority = $9, rdns_server = $10, notes = $11, switch_automation = $12, vlan_id = $13, vlan_range_start = $14, vlan_range_end = $15
 		 WHERE id = $1`,
-		pool.ID, pool.Network, pool.Gateway, pool.Netmask, pool.VRF, pool.Nameservers, pool.Description, pool.TenantID)
+		pool.ID, pool.Network, pool.Gateway, pool.Netmask, pool.VRF, pool.Nameservers, pool.Description, pool.TenantID,
+		pool.Priority, pool.RDNSServer, pool.Notes, pool.SwitchAutomation, pool.VlanID, pool.VlanRangeStart, pool.VlanRangeEnd)
 	return err
 }
 

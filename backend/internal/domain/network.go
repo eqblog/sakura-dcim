@@ -51,9 +51,16 @@ type IPPool struct {
 	Netmask     string     `json:"netmask" db:"netmask"`
 	VRF         string     `json:"vrf" db:"vrf"`
 	Nameservers []string   `json:"nameservers" db:"nameservers"`
-	Description string     `json:"description" db:"description"`
-	TotalIPs    int        `json:"total_ips" db:"-"`
-	UsedIPs     int        `json:"used_ips" db:"-"`
+	Description      string     `json:"description" db:"description"`
+	Priority         int        `json:"priority" db:"priority"`
+	RDNSServer       string     `json:"rdns_server" db:"rdns_server"`
+	Notes            string     `json:"notes" db:"notes"`
+	SwitchAutomation bool       `json:"switch_automation" db:"switch_automation"`
+	VlanID           int        `json:"vlan_id" db:"vlan_id"`
+	VlanRangeStart   int        `json:"vlan_range_start" db:"vlan_range_start"`
+	VlanRangeEnd     int        `json:"vlan_range_end" db:"vlan_range_end"`
+	TotalIPs         int        `json:"total_ips" db:"-"`
+	UsedIPs          int        `json:"used_ips" db:"-"`
 }
 
 type IPAddress struct {

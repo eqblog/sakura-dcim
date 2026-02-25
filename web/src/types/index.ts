@@ -259,6 +259,13 @@ export interface IPPool {
   vrf: string;
   nameservers: string[];
   description: string;
+  priority: number;
+  rdns_server: string;
+  notes: string;
+  switch_automation: boolean;
+  vlan_id: number;
+  vlan_range_start: number;
+  vlan_range_end: number;
   total_ips: number;
   used_ips: number;
 }
