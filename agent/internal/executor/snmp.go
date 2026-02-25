@@ -26,12 +26,13 @@ type SNMPPollPayload struct {
 }
 
 type PortTraffic struct {
-	PortIndex int    `json:"port_index"`
-	PortName  string `json:"port_name"`
-	InOctets  uint64 `json:"in_octets"`
-	OutOctets uint64 `json:"out_octets"`
-	Speed     uint64 `json:"speed"`
+	PortIndex  int    `json:"port_index"`
+	PortName   string `json:"port_name"`
+	InOctets   uint64 `json:"in_octets"`
+	OutOctets  uint64 `json:"out_octets"`
+	Speed      uint64 `json:"speed"`
 	OperStatus string `json:"oper_status"`
+	VlanID     int    `json:"vlan_id"`
 }
 
 // HandleSNMPPoll polls switch port counters via snmpwalk/snmpget.
@@ -70,6 +71,9 @@ func (e *SNMPExecutor) HandleSNMPPoll(raw json.RawMessage) (interface{}, error) 
 		results[name] = parseSNMPWalk(string(out))
 	}
 
+	// Poll VLAN data: dot1dBasePortIfIndex (bridge port -> ifIndex) and dot1qPvid (bridge port -> PVID)
+	ifIndexToPvid := e.pollPortVLANs(version, p.SNMPCommunity, p.SwitchIP)
+
 	// Build port traffic data
 	var ports []PortTraffic
 	for idx, name := range results["ifDescr"] {
@@ -96,6 +100,9 @@ func (e *SNMPExecutor) HandleSNMPPoll(raw json.RawMessage) (interface{}, error) 
 				pt.OperStatus = "unknown"
 			}
 		}
+		if vid, ok := ifIndexToPvid[idx]; ok {
+			pt.VlanID = vid
+		}
 		ports = append(ports, pt)
 	}
 
@@ -103,6 +110,46 @@ func (e *SNMPExecutor) HandleSNMPPoll(raw json.RawMessage) (interface{}, error) 
 		"switch_ip": p.SwitchIP,
 		"ports":     ports,
 	}, nil
+}
+
+// pollPortVLANs queries dot1dBasePortIfIndex and dot1qPvid to build ifIndex → PVID mapping.
+func (e *SNMPExecutor) pollPortVLANs(version, community, switchIP string) map[int]int {
+	ifIndexToPvid := make(map[int]int)
+
+	// dot1dBasePortIfIndex: bridgePort -> ifIndex
+	bridgeOut, err := exec.Command("snmpwalk", version, "-c", community, switchIP, "1.3.6.1.2.1.17.1.4.1.2").CombinedOutput()
+	if err != nil {
+		e.logger.Debug("snmpwalk dot1dBasePortIfIndex failed", zap.Error(err))
+		return ifIndexToPvid
+	}
+	bridgeToIfIndex := make(map[int]int)
+	for bp, val := range parseSNMPWalk(string(bridgeOut)) {
+		ifIdx, _ := strconv.Atoi(val)
+		if ifIdx > 0 {
+			bridgeToIfIndex[bp] = ifIdx
+		}
+	}
+
+	// dot1qPvid: bridgePort -> PVID
+	pvidOut, err := exec.Command("snmpwalk", version, "-c", community, switchIP, "1.3.6.1.2.1.17.7.1.4.5.1.1").CombinedOutput()
+	if err != nil {
+		e.logger.Debug("snmpwalk dot1qPvid failed", zap.Error(err))
+		return ifIndexToPvid
+	}
+	for bp, val := range parseSNMPWalk(string(pvidOut)) {
+		pvid, _ := strconv.Atoi(val)
+		if pvid > 0 {
+			if ifIdx, ok := bridgeToIfIndex[bp]; ok {
+				ifIndexToPvid[ifIdx] = pvid
+			} else {
+				// Some devices index dot1qPvid by ifIndex directly
+				ifIndexToPvid[bp] = pvid
+			}
+		}
+	}
+
+	e.logger.Debug("polled port VLANs", zap.Int("count", len(ifIndexToPvid)))
+	return ifIndexToPvid
 }
 
 // parseSNMPWalk parses snmpwalk output into port_index → value map.

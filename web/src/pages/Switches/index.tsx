@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { message } from 'antd';
 import { switchAPI, agentAPI, bandwidthAPI } from '../../api';
 import type { Switch, SwitchPort, Agent, VLANSummary, SwitchBandwidthMap } from '../../types';
 import SwitchList from './SwitchList';
@@ -30,37 +31,54 @@ const SwitchesPage: React.FC = () => {
     });
   }, [fetchSwitches]);
 
+  const fetchSwitchData = useCallback(async (switchId: string) => {
+    const [portResp, vlanResp, bwResp] = await Promise.all([
+      switchAPI.listPorts(switchId),
+      switchAPI.getVLANs(switchId),
+      bandwidthAPI.getSwitchBandwidth(switchId),
+    ]);
+    if (portResp.data.success) setPorts(portResp.data.data || []);
+    if (vlanResp.data.success) setVlans(vlanResp.data.data || []);
+    if (bwResp.data.success) setBandwidth(bwResp.data.data || {});
+  }, []);
+
   const handleSelectSwitch = useCallback(async (sw: Switch) => {
     setSelectedSwitch(sw);
+    setPorts([]);
+    setVlans([]);
+    setBandwidth({});
     setPortsLoading(true);
     try {
-      const [portResp, vlanResp, bwResp] = await Promise.all([
-        switchAPI.listPorts(sw.id),
-        switchAPI.getVLANs(sw.id),
-        bandwidthAPI.getSwitchBandwidth(sw.id),
-      ]);
-      if (portResp.data.success) setPorts(portResp.data.data || []);
-      if (vlanResp.data.success) setVlans(vlanResp.data.data || []);
-      if (bwResp.data.success) setBandwidth(bwResp.data.data || {});
+      await fetchSwitchData(sw.id);
     } catch { /* */ }
     setPortsLoading(false);
-  }, []);
+  }, [fetchSwitchData]);
 
   const refreshPorts = useCallback(async () => {
     if (!selectedSwitch) return;
     setPortsLoading(true);
     try {
-      const [portResp, vlanResp, bwResp] = await Promise.all([
-        switchAPI.listPorts(selectedSwitch.id),
-        switchAPI.getVLANs(selectedSwitch.id),
-        bandwidthAPI.getSwitchBandwidth(selectedSwitch.id),
-      ]);
-      if (portResp.data.success) setPorts(portResp.data.data || []);
-      if (vlanResp.data.success) setVlans(vlanResp.data.data || []);
-      if (bwResp.data.success) setBandwidth(bwResp.data.data || {});
+      await fetchSwitchData(selectedSwitch.id);
     } catch { /* */ }
     setPortsLoading(false);
-  }, [selectedSwitch]);
+  }, [selectedSwitch, fetchSwitchData]);
+
+  const syncFromSNMP = useCallback(async () => {
+    if (!selectedSwitch) return;
+    setPortsLoading(true);
+    try {
+      const { data: resp } = await switchAPI.syncPorts(selectedSwitch.id);
+      if (resp.success) {
+        message.success('Ports synced from SNMP');
+        await fetchSwitchData(selectedSwitch.id);
+      } else {
+        message.error(resp.error || 'SNMP sync failed');
+      }
+    } catch {
+      message.error('SNMP sync failed');
+    }
+    setPortsLoading(false);
+  }, [selectedSwitch, fetchSwitchData]);
 
   if (selectedSwitch) {
     return (
@@ -72,6 +90,7 @@ const SwitchesPage: React.FC = () => {
         bandwidth={bandwidth}
         onBack={() => setSelectedSwitch(null)}
         onRefresh={refreshPorts}
+        onSyncSNMP={syncFromSNMP}
       />
     );
   }

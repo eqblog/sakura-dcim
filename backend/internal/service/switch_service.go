@@ -300,6 +300,7 @@ func (s *SwitchService) upsertPortsFromSNMPPayload(ctx context.Context, switchID
 			PortName   string `json:"port_name"`
 			Speed      uint64 `json:"speed"`
 			OperStatus string `json:"oper_status"`
+			VlanID     int    `json:"vlan_id"`
 		} `json:"ports"`
 	}
 	if err := json.Unmarshal(raw, &pollResult); err != nil {
@@ -316,6 +317,7 @@ func (s *SwitchService) upsertPortsFromSNMPPayload(ctx context.Context, switchID
 			PortIndex:   p.PortIndex,
 			PortName:    p.PortName,
 			SpeedMbps:   speedMbps,
+			VlanID:      p.VlanID,
 			AdminStatus: "up",
 			OperStatus:  p.OperStatus,
 			LastPolled:  &now,

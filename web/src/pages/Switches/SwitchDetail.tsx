@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Typography, Button, Space, Tag, Tabs } from 'antd';
-import { ArrowLeftOutlined, ReloadOutlined, CodeOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, ReloadOutlined, CodeOutlined, SyncOutlined } from '@ant-design/icons';
 import type { Switch, SwitchPort, VLANSummary, SwitchBandwidthMap } from '../../types';
 import InterfacesTab from './InterfacesTab';
 import VLANsTab from './VLANsTab';
@@ -21,9 +21,10 @@ interface Props {
   bandwidth: SwitchBandwidthMap;
   onBack: () => void;
   onRefresh: () => void;
+  onSyncSNMP: () => void;
 }
 
-const SwitchDetail: React.FC<Props> = ({ sw, ports, portsLoading, vlans, bandwidth, onBack, onRefresh }) => {
+const SwitchDetail: React.FC<Props> = ({ sw, ports, portsLoading, vlans, bandwidth, onBack, onRefresh, onSyncSNMP }) => {
   const [activeTab, setActiveTab] = useState('interfaces');
 
   return (
@@ -40,7 +41,10 @@ const SwitchDetail: React.FC<Props> = ({ sw, ports, portsLoading, vlans, bandwid
         activeKey={activeTab}
         onChange={setActiveTab}
         tabBarExtraContent={
-          <Button icon={<ReloadOutlined />} loading={portsLoading} onClick={onRefresh}>Refresh</Button>
+          <Space>
+            <Button icon={<SyncOutlined />} loading={portsLoading} onClick={onSyncSNMP}>SNMP Sync</Button>
+            <Button icon={<ReloadOutlined />} loading={portsLoading} onClick={onRefresh}>Refresh</Button>
+          </Space>
         }
         items={[
           {
