@@ -77,6 +77,7 @@ const (
 
 	// Inventory
 	ActionInventoryScan   = "inventory.scan"
+	ActionInventoryPXE    = "inventory.pxe"
 	ActionInventoryResult = "inventory.result"
 
 	// Switch

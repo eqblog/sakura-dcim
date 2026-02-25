@@ -38,6 +38,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ server, onUpdated }) => {
       agent_id: server.agent_id || undefined,
       primary_ip: server.primary_ip,
       ipmi_ip: server.ipmi_ip,
+      mac_address: server.mac_address,
       bmc_type: server.bmc_type || 'generic',
       tags: server.tags || [],
       notes: server.notes,
@@ -76,6 +77,9 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ server, onUpdated }) => {
         </Descriptions.Item>
         <Descriptions.Item label="IPMI IP">
           <Text copyable={!!server.ipmi_ip}>{server.ipmi_ip || '-'}</Text>
+        </Descriptions.Item>
+        <Descriptions.Item label="MAC Address">
+          <Text copyable={!!server.mac_address}>{server.mac_address || '-'}</Text>
         </Descriptions.Item>
         <Descriptions.Item label="Status">
           <Tag color={statusColors[server.status]}>{server.status.toUpperCase()}</Tag>
@@ -149,6 +153,9 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ server, onUpdated }) => {
           </Form.Item>
           <Form.Item name="ipmi_ip" label="IPMI IP">
             <Input placeholder="10.0.0.100" />
+          </Form.Item>
+          <Form.Item name="mac_address" label="MAC Address">
+            <Input placeholder="AA:BB:CC:DD:EE:FF" />
           </Form.Item>
           <Form.Item name="ipmi_user" label="IPMI User">
             <Input placeholder="Leave empty to keep unchanged" />

@@ -60,11 +60,12 @@ type Server struct {
 	Label    string       `json:"label" db:"label"`
 	Status   ServerStatus `json:"status" db:"status"`
 	// Network
-	PrimaryIP string `json:"primary_ip" db:"primary_ip"`
-	IPMIIP    string `json:"ipmi_ip" db:"ipmi_ip"`
-	IPMIUser  string  `json:"ipmi_user,omitempty" db:"ipmi_user"` // encrypted
-	IPMIPass  string  `json:"ipmi_pass,omitempty" db:"ipmi_pass"` // encrypted
-	BMCType   BMCType `json:"bmc_type" db:"bmc_type"`
+	PrimaryIP  string  `json:"primary_ip" db:"primary_ip"`
+	IPMIIP     string  `json:"ipmi_ip" db:"ipmi_ip"`
+	IPMIUser   string  `json:"ipmi_user,omitempty" db:"ipmi_user"` // encrypted
+	IPMIPass   string  `json:"ipmi_pass,omitempty" db:"ipmi_pass"` // encrypted
+	MACAddress string  `json:"mac_address" db:"mac_address"`
+	BMCType    BMCType `json:"bmc_type" db:"bmc_type"`
 	// Hardware summary
 	CPUModel string `json:"cpu_model" db:"cpu_model"`
 	CPUCores int    `json:"cpu_cores" db:"cpu_cores"`
@@ -81,29 +82,31 @@ type Server struct {
 }
 
 type ServerCreateRequest struct {
-	AgentID   *uuid.UUID `json:"agent_id"`
-	Hostname  string     `json:"hostname" binding:"required"`
-	Label     string     `json:"label"`
-	PrimaryIP string     `json:"primary_ip"`
-	IPMIIP    string     `json:"ipmi_ip"`
-	IPMIUser  string     `json:"ipmi_user"`
-	IPMIPass  string     `json:"ipmi_pass"`
-	BMCType   BMCType    `json:"bmc_type"`
-	Tags      []string   `json:"tags"`
-	Notes     string     `json:"notes"`
+	AgentID    *uuid.UUID `json:"agent_id"`
+	Hostname   string     `json:"hostname" binding:"required"`
+	Label      string     `json:"label"`
+	PrimaryIP  string     `json:"primary_ip"`
+	IPMIIP     string     `json:"ipmi_ip"`
+	IPMIUser   string     `json:"ipmi_user"`
+	IPMIPass   string     `json:"ipmi_pass"`
+	MACAddress string     `json:"mac_address"`
+	BMCType    BMCType    `json:"bmc_type"`
+	Tags       []string   `json:"tags"`
+	Notes      string     `json:"notes"`
 }
 
 type ServerUpdateRequest struct {
-	Hostname  *string    `json:"hostname"`
-	Label     *string    `json:"label"`
-	AgentID   *uuid.UUID `json:"agent_id"`
-	PrimaryIP *string    `json:"primary_ip"`
-	IPMIIP    *string    `json:"ipmi_ip"`
-	IPMIUser  *string    `json:"ipmi_user"`
-	IPMIPass  *string    `json:"ipmi_pass"`
-	BMCType   *BMCType   `json:"bmc_type"`
-	Tags      *[]string  `json:"tags"`
-	Notes     *string    `json:"notes"`
+	Hostname   *string    `json:"hostname"`
+	Label      *string    `json:"label"`
+	AgentID    *uuid.UUID `json:"agent_id"`
+	PrimaryIP  *string    `json:"primary_ip"`
+	IPMIIP     *string    `json:"ipmi_ip"`
+	IPMIUser   *string    `json:"ipmi_user"`
+	IPMIPass   *string    `json:"ipmi_pass"`
+	MACAddress *string    `json:"mac_address"`
+	BMCType    *BMCType   `json:"bmc_type"`
+	Tags       *[]string  `json:"tags"`
+	Notes      *string    `json:"notes"`
 }
 
 type ServerListParams struct {

@@ -43,7 +43,6 @@ func main() {
 	switchExec := executor.NewSwitchExecutor(logger)
 	snmpExec := executor.NewSNMPExecutor(logger)
 	solExec := executor.NewSOLExecutor(logger)
-	pxeInvExec := executor.NewPXEInventoryExecutor(logger, ipmiExec, pxeExec)
 
 	// Build handler map
 	handlers := map[string]client.ActionHandler{
@@ -55,7 +54,6 @@ func main() {
 		"ipmi.sensors":      ipmiExec.HandleSensors,
 		"ipmi.sol":          solExec.HandleSOL,
 		"inventory.scan":    inventoryExec.HandleScan,
-		"inventory.pxe":     pxeInvExec.HandlePXEInventory,
 		"ipmi.kvm.start":    kvmExec.HandleKVMStart,
 		"ipmi.kvm.stop":     kvmExec.HandleKVMStop,
 		"pxe.prepare":       pxeExec.HandlePXEPrepare,
@@ -70,10 +68,13 @@ func main() {
 	// Create WebSocket client
 	wsClient := client.NewWSClient(cfg, logger, handlers)
 
-	// Discovery executor (needs wsClient for sending events back to panel)
+	// Executors that need wsClient for sending events back to panel
 	discoveryExec := executor.NewDiscoveryExecutor(logger, wsClient)
 	handlers["discovery.start"] = discoveryExec.HandleDiscoveryStart
 	handlers["discovery.stop"] = discoveryExec.HandleDiscoveryStop
+
+	pxeInvExec := executor.NewPXEInventoryExecutor(logger, ipmiExec, pxeExec, wsClient)
+	handlers["inventory.pxe"] = pxeInvExec.HandlePXEInventory
 
 	// Config hot-reload watcher
 	cfgWatcher := config.NewWatcher(*configPath, cfg, logger)

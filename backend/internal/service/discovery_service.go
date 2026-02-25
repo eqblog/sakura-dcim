@@ -97,6 +97,7 @@ func (s *DiscoveryService) StartDiscovery(ctx context.Context, agentID uuid.UUID
 			"dhcp_range_end":   req.DHCPRangeEnd,
 			"gateway":          req.Gateway,
 			"netmask":          req.Netmask,
+			"interface":        req.Interface,
 		}, 30*time.Second)
 		if err != nil {
 			s.logger.Error("failed to send discovery.start to agent",
@@ -261,19 +262,20 @@ func (s *DiscoveryService) ApproveServer(ctx context.Context, id uuid.UUID, user
 	}
 
 	server := &domain.Server{
-		AgentID:  agentID,
-		Hostname: req.Hostname,
-		Label:    req.Label,
-		Status:   domain.ServerStatusActive,
-		IPMIIP:   req.IPMIIP,
-		IPMIUser: req.IPMIUser,
-		IPMIPass: req.IPMIPass,
-		BMCType:  bmcType,
-		CPUModel: ds.CPUModel,
-		CPUCores: ds.CPUCores,
-		RAMMB:    ds.RAMMB,
-		Tags:     req.Tags,
-		Notes:    req.Notes,
+		AgentID:    agentID,
+		Hostname:   req.Hostname,
+		Label:      req.Label,
+		Status:     domain.ServerStatusActive,
+		IPMIIP:     req.IPMIIP,
+		IPMIUser:   req.IPMIUser,
+		IPMIPass:   req.IPMIPass,
+		MACAddress: ds.MACAddress,
+		BMCType:    bmcType,
+		CPUModel:   ds.CPUModel,
+		CPUCores:   ds.CPUCores,
+		RAMMB:      ds.RAMMB,
+		Tags:       req.Tags,
+		Notes:      req.Notes,
 	}
 
 	if err := s.serverRepo.Create(ctx, server); err != nil {

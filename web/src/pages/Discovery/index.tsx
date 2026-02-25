@@ -299,6 +299,9 @@ const DiscoveryPage: React.FC = () => {
                 <Form.Item name="netmask" rules={[{ required: true, message: 'Required' }]}>
                   <Input placeholder="Netmask" style={{ width: 140 }} />
                 </Form.Item>
+                <Form.Item name="interface">
+                  <Input placeholder="NIC (e.g. eth0)" style={{ width: 130 }} />
+                </Form.Item>
                 <Form.Item>
                   <Button
                     type="primary"

@@ -29,15 +29,16 @@ func (s *ServerService) Create(ctx context.Context, tenantID uuid.UUID, req *dom
 		tags = []string{}
 	}
 	server := &domain.Server{
-		ID:        uuid.New(),
-		TenantID:  &tenantID,
-		AgentID:   req.AgentID,
-		Hostname:  req.Hostname,
-		Label:     req.Label,
-		Status:    domain.ServerStatusActive,
-		PrimaryIP: req.PrimaryIP,
-		Tags:      tags,
-		Notes:     req.Notes,
+		ID:         uuid.New(),
+		TenantID:   &tenantID,
+		AgentID:    req.AgentID,
+		Hostname:   req.Hostname,
+		Label:      req.Label,
+		Status:     domain.ServerStatusActive,
+		PrimaryIP:  req.PrimaryIP,
+		MACAddress: req.MACAddress,
+		Tags:       tags,
+		Notes:      req.Notes,
 	}
 
 	if req.BMCType != "" {
@@ -134,6 +135,9 @@ func (s *ServerService) Update(ctx context.Context, id uuid.UUID, req *domain.Se
 			return nil, fmt.Errorf("encrypt ipmi_pass: %w", err)
 		}
 		server.IPMIPass = encrypted
+	}
+	if req.MACAddress != nil {
+		server.MACAddress = *req.MACAddress
 	}
 	if req.BMCType != nil {
 		server.BMCType = *req.BMCType

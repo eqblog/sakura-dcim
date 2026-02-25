@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Button, Spin, Empty, Descriptions, Table, Tag, Space, message, Typography, Row, Col } from 'antd';
-import { ReloadOutlined, ScanOutlined } from '@ant-design/icons';
+import { Card, Button, Spin, Empty, Descriptions, Table, Tag, Space, message, Typography, Row, Col, Alert } from 'antd';
+import { ReloadOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { serverAPI } from '../../../api';
 import type { InventoryResult } from '../../../types';
 
@@ -14,14 +14,14 @@ const CPUInfo: React.FC<{ details: any }> = ({ details }) => {
   if (!details) return <Text type="secondary">No CPU data</Text>;
   return (
     <Descriptions column={2} size="small" bordered>
-      <Descriptions.Item label="Model">{details['Model name'] || '-'}</Descriptions.Item>
+      <Descriptions.Item label="Model">{details['Model name'] || details['model'] || '-'}</Descriptions.Item>
       <Descriptions.Item label="Architecture">{details['Architecture'] || '-'}</Descriptions.Item>
-      <Descriptions.Item label="CPUs">{details['CPU(s)'] || '-'}</Descriptions.Item>
+      <Descriptions.Item label="CPUs">{details['CPU(s)'] || details['cores'] || '-'}</Descriptions.Item>
       <Descriptions.Item label="Threads/Core">{details['Thread(s) per core'] || '-'}</Descriptions.Item>
       <Descriptions.Item label="Cores/Socket">{details['Core(s) per socket'] || '-'}</Descriptions.Item>
-      <Descriptions.Item label="Sockets">{details['Socket(s)'] || '-'}</Descriptions.Item>
+      <Descriptions.Item label="Sockets">{details['Socket(s)'] || details['sockets'] || '-'}</Descriptions.Item>
       <Descriptions.Item label="MHz">{details['CPU MHz'] || details['CPU max MHz'] || '-'}</Descriptions.Item>
-      <Descriptions.Item label="Vendor">{details['Vendor ID'] || '-'}</Descriptions.Item>
+      <Descriptions.Item label="Vendor">{details['Vendor ID'] || details['vendor'] || '-'}</Descriptions.Item>
     </Descriptions>
   );
 };
@@ -104,12 +104,18 @@ const InventoryTab: React.FC<Props> = ({ serverId }) => {
   const [inventory, setInventory] = useState<InventoryResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [scanInitiated, setScanInitiated] = useState(false);
 
   const fetchInventory = async () => {
     setLoading(true);
     try {
       const { data: resp } = await serverAPI.inventory(serverId);
-      if (resp.success && resp.data) setInventory(resp.data);
+      if (resp.success && resp.data) {
+        setInventory(resp.data);
+        if (scanInitiated && resp.data.components?.length > 0) {
+          setScanInitiated(false);
+        }
+      }
     } catch { /* */ }
     setLoading(false);
   };
@@ -118,29 +124,50 @@ const InventoryTab: React.FC<Props> = ({ serverId }) => {
     setScanning(true);
     try {
       const { data: resp } = await serverAPI.inventoryScan(serverId);
-      if (resp.success && resp.data) {
-        setInventory(resp.data);
-        message.success('Inventory scan completed');
+      if (resp.success) {
+        message.success('PXE inventory scan initiated. The server will reboot into scanning mode and report hardware automatically.');
+        setScanInitiated(true);
       } else {
         message.error(resp.error || 'Scan failed');
       }
     } catch {
-      message.error('Failed to trigger inventory scan');
+      message.error('Failed to trigger PXE inventory scan');
     }
     setScanning(false);
   };
 
   useEffect(() => { fetchInventory(); }, [serverId]);
 
-  if (loading) {
+  // Auto-refresh while scan is in progress
+  useEffect(() => {
+    if (!scanInitiated) return;
+    const timer = setInterval(fetchInventory, 15000);
+    return () => clearInterval(timer);
+  }, [scanInitiated, serverId]);
+
+  if (loading && !inventory) {
     return <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>;
   }
 
   if (!inventory || !inventory.components || inventory.components.length === 0) {
     return (
       <Empty description="No inventory data collected yet.">
-        <Button type="primary" icon={<ScanOutlined />} onClick={triggerScan} loading={scanning}>
-          Scan Hardware
+        {scanInitiated ? (
+          <Alert
+            type="info"
+            showIcon
+            message="PXE scan in progress"
+            description="The server is rebooting into inventory scanning mode. Hardware data will appear here automatically when the scan completes."
+            style={{ marginBottom: 16, maxWidth: 500, margin: '0 auto 16px' }}
+          />
+        ) : (
+          <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+            Click below to PXE boot this server into a hardware scanning system.
+            The server will reboot, scan its hardware, and report back automatically.
+          </Text>
+        )}
+        <Button type="primary" icon={<ThunderboltOutlined />} onClick={triggerScan} loading={scanning} disabled={scanInitiated}>
+          {scanInitiated ? 'Scanning...' : 'PXE Inventory Scan'}
         </Button>
       </Empty>
     );
@@ -157,10 +184,20 @@ const InventoryTab: React.FC<Props> = ({ serverId }) => {
 
   return (
     <div>
+      {scanInitiated && (
+        <Alert
+          type="info"
+          showIcon
+          message="PXE scan in progress — waiting for hardware report from the server..."
+          style={{ marginBottom: 16 }}
+          closable
+          onClose={() => setScanInitiated(false)}
+        />
+      )}
       <Space style={{ marginBottom: 16 }}>
         <Button icon={<ReloadOutlined />} onClick={fetchInventory}>Refresh</Button>
-        <Button type="primary" icon={<ScanOutlined />} onClick={triggerScan} loading={scanning}>
-          Re-scan Hardware
+        <Button type="primary" icon={<ThunderboltOutlined />} onClick={triggerScan} loading={scanning} disabled={scanInitiated}>
+          {scanInitiated ? 'Scanning...' : 'PXE Re-scan'}
         </Button>
         {inventory.collected_at && (
           <Text type="secondary">Last scan: {new Date(inventory.collected_at).toLocaleString()}</Text>

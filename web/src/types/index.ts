@@ -90,6 +90,7 @@ export interface Server {
   status: ServerStatus;
   primary_ip: string;
   ipmi_ip: string;
+  mac_address: string;
   bmc_type: BMCType;
   cpu_model: string;
   cpu_cores: number;
@@ -109,6 +110,7 @@ export interface ServerCreateRequest {
   ipmi_ip?: string;
   ipmi_user?: string;
   ipmi_pass?: string;
+  mac_address?: string;
   bmc_type?: BMCType;
   tags?: string[];
   notes?: string;

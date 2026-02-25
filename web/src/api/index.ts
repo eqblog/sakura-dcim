@@ -59,7 +59,7 @@ export const serverAPI = {
   inventory: (id: string) =>
     client.get<APIResponse<InventoryResult>>(`/servers/${id}/inventory`),
   inventoryScan: (id: string) =>
-    client.post<APIResponse<InventoryResult>>(`/servers/${id}/inventory/scan`),
+    client.post<APIResponse>(`/servers/${id}/inventory/scan`),
   reinstall: (id: string, data: any) =>
     client.post<APIResponse>(`/servers/${id}/reinstall`, data),
   reinstallStatus: (id: string) =>
@@ -248,7 +248,7 @@ export const auditAPI = {
 
 // Discovery
 export const discoveryAPI = {
-  start: (agentId: string, data: { dhcp_range_start: string; dhcp_range_end: string; gateway: string; netmask: string }) =>
+  start: (agentId: string, data: { dhcp_range_start: string; dhcp_range_end: string; gateway: string; netmask: string; interface?: string }) =>
     client.post<APIResponse<DiscoverySession>>(`/agents/${agentId}/discovery/start`, data),
   stop: (agentId: string) =>
     client.post<APIResponse>(`/agents/${agentId}/discovery/stop`),

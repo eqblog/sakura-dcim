@@ -9,7 +9,9 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/sakura-dcim/sakura-dcim/backend/internal/config"
 	"github.com/sakura-dcim/sakura-dcim/backend/internal/domain"
+	"github.com/sakura-dcim/sakura-dcim/backend/internal/pkg/crypto"
 	"github.com/sakura-dcim/sakura-dcim/backend/internal/repository"
 	ws "github.com/sakura-dcim/sakura-dcim/backend/internal/websocket"
 )
@@ -18,6 +20,7 @@ type InventoryService struct {
 	inventoryRepo repository.InventoryRepository
 	serverRepo    repository.ServerRepository
 	hub           *ws.Hub
+	cfg           *config.Config
 	logger        *zap.Logger
 }
 
@@ -25,12 +28,14 @@ func NewInventoryService(
 	inventoryRepo repository.InventoryRepository,
 	serverRepo repository.ServerRepository,
 	hub *ws.Hub,
+	cfg *config.Config,
 	logger *zap.Logger,
 ) *InventoryService {
 	return &InventoryService{
 		inventoryRepo: inventoryRepo,
 		serverRepo:    serverRepo,
 		hub:           hub,
+		cfg:           cfg,
 		logger:        logger,
 	}
 }
@@ -53,8 +58,10 @@ func (s *InventoryService) GetInventory(ctx context.Context, serverID uuid.UUID)
 	return result, nil
 }
 
-// TriggerScan sends an inventory.scan request to the agent and stores the results.
-func (s *InventoryService) TriggerScan(ctx context.Context, serverID uuid.UUID) (*domain.InventoryResult, error) {
+// TriggerScan PXE-boots the target server into a mini-Linux for hardware scanning.
+// This is asynchronous — the server reboots, scans hardware, and reports back via
+// the agent callback. Results arrive as inventory.result events.
+func (s *InventoryService) TriggerScan(ctx context.Context, serverID uuid.UUID) (map[string]interface{}, error) {
 	server, err := s.serverRepo.GetByID(ctx, serverID)
 	if err != nil {
 		return nil, fmt.Errorf("server not found: %w", err)
@@ -62,10 +69,34 @@ func (s *InventoryService) TriggerScan(ctx context.Context, serverID uuid.UUID) 
 	if server.AgentID == nil {
 		return nil, fmt.Errorf("server has no agent assigned")
 	}
+	if server.MACAddress == "" {
+		return nil, fmt.Errorf("server has no MAC address — set it in server settings before scanning")
+	}
 
-	resp, err := s.hub.SendRequest(*server.AgentID, ws.ActionInventoryScan, map[string]any{
-		"server_id": serverID.String(),
-	}, 60*time.Second)
+	// Decrypt IPMI credentials
+	ipmiUser, ipmiPass := "", ""
+	if server.IPMIUser != "" {
+		ipmiUser, err = crypto.DecryptAESGCM(server.IPMIUser, s.cfg.Crypto.EncryptionKey)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt ipmi_user: %w", err)
+		}
+	}
+	if server.IPMIPass != "" {
+		ipmiPass, err = crypto.DecryptAESGCM(server.IPMIPass, s.cfg.Crypto.EncryptionKey)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt ipmi_pass: %w", err)
+		}
+	}
+
+	// Send inventory.pxe to agent — this PXE boots the server into inventory mode
+	resp, err := s.hub.SendRequest(*server.AgentID, ws.ActionInventoryPXE, map[string]any{
+		"server_id":  serverID.String(),
+		"ipmi_ip":    server.IPMIIP,
+		"ipmi_user":  ipmiUser,
+		"ipmi_pass":  ipmiPass,
+		"server_mac": server.MACAddress,
+		"bmc_type":   string(server.BMCType),
+	}, 120*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("agent request failed: %w", err)
 	}
@@ -73,28 +104,11 @@ func (s *InventoryService) TriggerScan(ctx context.Context, serverID uuid.UUID) 
 		return nil, fmt.Errorf("agent error: %s", resp.Error)
 	}
 
-	// Parse agent response — it returns a map of component → details
+	// Return immediately — PXE boot is async, results come via inventory.result event
 	raw, _ := json.Marshal(resp.Payload)
-	var scanResult map[string]interface{}
-	if err := json.Unmarshal(raw, &scanResult); err != nil {
-		return nil, fmt.Errorf("failed to parse scan result: %w", err)
-	}
-
-	// Store each component
-	for component, details := range scanResult {
-		inv := &domain.ServerInventory{
-			ServerID:  serverID,
-			Component: component,
-			Details:   details,
-		}
-		if err := s.inventoryRepo.Upsert(ctx, inv); err != nil {
-			s.logger.Error("failed to store inventory component",
-				zap.String("component", component),
-				zap.Error(err))
-		}
-	}
-
-	return s.GetInventory(ctx, serverID)
+	var result map[string]interface{}
+	json.Unmarshal(raw, &result)
+	return result, nil
 }
 
 // HandleInventoryResultEvent processes unsolicited inventory.result events from agents.
@@ -128,4 +142,8 @@ func (s *InventoryService) HandleInventoryResultEvent(agentID uuid.UUID, msg *ws
 				zap.Error(err))
 		}
 	}
+
+	s.logger.Info("inventory result stored",
+		zap.String("server_id", serverID.String()),
+		zap.Int("components", len(payload.Data)))
 }

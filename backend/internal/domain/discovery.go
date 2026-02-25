@@ -62,6 +62,7 @@ type DiscoveryStartRequest struct {
 	DHCPRangeEnd   string `json:"dhcp_range_end" binding:"required"`
 	Gateway        string `json:"gateway" binding:"required"`
 	Netmask        string `json:"netmask" binding:"required"`
+	Interface      string `json:"interface"`
 }
 
 type DiscoveryApproveRequest struct {

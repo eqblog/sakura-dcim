@@ -45,6 +45,7 @@ type discoveryStartPayload struct {
 	DHCPRangeEnd   string `json:"dhcp_range_end"`
 	Gateway        string `json:"gateway"`
 	Netmask        string `json:"netmask"`
+	Interface      string `json:"interface"`
 }
 
 // HandleDiscoveryStart sets up dnsmasq for PXE discovery and starts the HTTP callback server.
@@ -130,6 +131,10 @@ func (e *DiscoveryExecutor) cleanup() {
 }
 
 var dnsmasqTmpl = template.Must(template.New("dnsmasq").Parse(`# Sakura DCIM Discovery Mode — auto-generated
+{{- if .Interface}}
+interface={{.Interface}}
+bind-interfaces
+{{- end}}
 dhcp-range={{.DHCPRangeStart}},{{.DHCPRangeEnd}},{{.Netmask}},1h
 dhcp-option=3,{{.Gateway}}
 dhcp-boot=pxelinux.0

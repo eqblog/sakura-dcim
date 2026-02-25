@@ -284,6 +284,9 @@ const ServerListPage: React.FC = () => {
           <Form.Item name="ipmi_pass" label="IPMI Password">
             <Input.Password placeholder="IPMI password" />
           </Form.Item>
+          <Form.Item name="mac_address" label="MAC Address">
+            <Input placeholder="AA:BB:CC:DD:EE:FF" />
+          </Form.Item>
           <Form.Item name="bmc_type" label="BMC Type" initialValue="generic">
             <Select
               options={[

@@ -105,7 +105,7 @@ func main() {
 	reinstallService := service.NewReinstallService(serverRepo, osProfileRepo, diskLayoutRepo, scriptRepo, installTaskRepo, hub, cfg, logger)
 	switchService := service.NewSwitchService(switchRepo, switchPortRepo, hub, logger)
 	bandwidthService := service.NewBandwidthService(switchRepo, switchPortRepo, hub, logger)
-	inventoryService := service.NewInventoryService(inventoryRepo, serverRepo, hub, logger)
+	inventoryService := service.NewInventoryService(inventoryRepo, serverRepo, hub, cfg, logger)
 	ipService := service.NewIPService(ipPoolRepo, ipAddressRepo)
 	discoveryService := service.NewDiscoveryService(discoverySessionRepo, discoveredServerRepo, serverRepo, agentRepo, hub, logger)
 
