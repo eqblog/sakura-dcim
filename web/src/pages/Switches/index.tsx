@@ -85,6 +85,13 @@ const SwitchesPage: React.FC = () => {
       if (resp.success) {
         setTestResult({ type: 'snmp', switch_name: sw.name, ...resp.data });
         setTestModalOpen(true);
+        // SNMP poll also saves ports to DB — refresh port table if viewing this switch
+        if (selectedSwitch?.id === sw.id || !selectedSwitch) {
+          setSelectedSwitch(sw);
+          switchAPI.listPorts(sw.id).then(({ data: portResp }) => {
+            if (portResp.success) setPorts(portResp.data || []);
+          });
+        }
       } else {
         message.error(resp.error || 'SNMP poll failed');
       }

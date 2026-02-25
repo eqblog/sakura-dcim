@@ -257,7 +257,7 @@ func (s *SwitchService) TestConnection(ctx context.Context, switchID uuid.UUID) 
 	return result, nil
 }
 
-// PollSNMP triggers SNMP polling on a switch and returns discovered port data.
+// PollSNMP triggers SNMP polling on a switch, saves discovered ports to DB, and returns raw data.
 func (s *SwitchService) PollSNMP(ctx context.Context, switchID uuid.UUID) (map[string]any, error) {
 	sw, err := s.switchRepo.GetByID(ctx, switchID)
 	if err != nil {
@@ -278,13 +278,54 @@ func (s *SwitchService) PollSNMP(ctx context.Context, switchID uuid.UUID) (map[s
 		return nil, fmt.Errorf("agent error: %s", resp.Error)
 	}
 
-	result := make(map[string]any)
 	raw, _ := json.Marshal(resp.Payload)
+
+	// Also save discovered ports to DB
+	s.upsertPortsFromSNMPPayload(ctx, switchID, raw)
+
+	result := make(map[string]any)
 	json.Unmarshal(raw, &result)
 	return result, nil
 }
 
-// SyncPortsFromSNMP polls SNMP for port data and upserts into the database.
+// upsertPortsFromSNMPPayload parses SNMP poll response and upserts ports into the database.
+func (s *SwitchService) upsertPortsFromSNMPPayload(ctx context.Context, switchID uuid.UUID, raw []byte) {
+	var pollResult struct {
+		Ports []struct {
+			PortIndex  int    `json:"port_index"`
+			PortName   string `json:"port_name"`
+			Speed      uint64 `json:"speed"`
+			OperStatus string `json:"oper_status"`
+		} `json:"ports"`
+	}
+	if err := json.Unmarshal(raw, &pollResult); err != nil {
+		s.logger.Warn("failed to parse SNMP ports for upsert", zap.Error(err))
+		return
+	}
+
+	now := time.Now()
+	for _, p := range pollResult.Ports {
+		speedMbps := int(p.Speed / 1_000_000)
+		port := &domain.SwitchPort{
+			ID:          uuid.New(),
+			SwitchID:    switchID,
+			PortIndex:   p.PortIndex,
+			PortName:    p.PortName,
+			SpeedMbps:   speedMbps,
+			AdminStatus: "up",
+			OperStatus:  p.OperStatus,
+			LastPolled:  &now,
+		}
+		if err := s.portRepo.UpsertBySwitchAndIndex(ctx, port); err != nil {
+			s.logger.Warn("failed to upsert port from SNMP",
+				zap.Int("port_index", p.PortIndex),
+				zap.Error(err),
+			)
+		}
+	}
+}
+
+// SyncPortsFromSNMP polls SNMP for port data, upserts into the database, and returns saved ports.
 func (s *SwitchService) SyncPortsFromSNMP(ctx context.Context, switchID uuid.UUID) ([]domain.SwitchPort, error) {
 	sw, err := s.switchRepo.GetByID(ctx, switchID)
 	if err != nil {
@@ -305,40 +346,8 @@ func (s *SwitchService) SyncPortsFromSNMP(ctx context.Context, switchID uuid.UUI
 		return nil, fmt.Errorf("agent error: %s", resp.Error)
 	}
 
-	// Parse response payload
 	raw, _ := json.Marshal(resp.Payload)
-	var pollResult struct {
-		Ports []struct {
-			PortIndex  int    `json:"port_index"`
-			PortName   string `json:"port_name"`
-			Speed      uint64 `json:"speed"`
-			OperStatus string `json:"oper_status"`
-		} `json:"ports"`
-	}
-	if err := json.Unmarshal(raw, &pollResult); err != nil {
-		return nil, fmt.Errorf("parse SNMP response: %w", err)
-	}
-
-	now := time.Now()
-	for _, p := range pollResult.Ports {
-		speedMbps := int(p.Speed / 1_000_000) // SNMP returns bits/sec
-		port := &domain.SwitchPort{
-			ID:          uuid.New(),
-			SwitchID:    switchID,
-			PortIndex:   p.PortIndex,
-			PortName:    p.PortName,
-			SpeedMbps:   speedMbps,
-			AdminStatus: "up",
-			OperStatus:  p.OperStatus,
-			LastPolled:  &now,
-		}
-		if err := s.portRepo.UpsertBySwitchAndIndex(ctx, port); err != nil {
-			s.logger.Warn("failed to upsert port from SNMP",
-				zap.Int("port_index", p.PortIndex),
-				zap.Error(err),
-			)
-		}
-	}
+	s.upsertPortsFromSNMPPayload(ctx, switchID, raw)
 
 	return s.portRepo.ListBySwitchID(ctx, switchID)
 }
