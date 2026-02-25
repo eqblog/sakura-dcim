@@ -62,7 +62,7 @@ services:
       SAKURA_INFLUXDB_TOKEN: sakura-dcim-influxdb-token
       SAKURA_SERVER_MODE: release
     ports:
-      - "8080:8080"
+      - "${API_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -76,7 +76,7 @@ services:
       dockerfile: ../docker/web.Dockerfile
     container_name: sakura-web
     ports:
-      - "3000:80"
+      - "${WEB_PORT:-3000}:80"
     depends_on:
       - backend
     restart: unless-stopped
