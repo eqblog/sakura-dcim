@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Card, Typography, Table, Button, Space, Modal, Form, Input, Select, Popconfirm, Progress, message } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Card, Typography, Table, Button, Space, Modal, Form, Input, Select, Popconfirm, Progress, Tag, Radio, Checkbox, Tooltip, message } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { ipPoolAPI } from '../../api';
 import type { IPPool, Tenant } from '../../types';
@@ -11,19 +11,22 @@ interface Props {
   pools: IPPool[];
   loading: boolean;
   tenants: Tenant[];
+  parentId?: string;
   onSelect: (pool: IPPool) => void;
   onRefresh: () => void;
   onDelete: (id: string) => void;
 }
 
-const PoolList: React.FC<Props> = ({ pools, loading, tenants, onSelect, onRefresh, onDelete }) => {
+const PoolList: React.FC<Props> = ({ pools, loading, tenants, parentId, onSelect, onRefresh, onDelete }) => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<IPPool | null>(null);
   const [form] = Form.useForm();
+  const poolType = Form.useWatch('pool_type', form);
 
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
+    form.setFieldsValue({ pool_type: 'ip_pool', reserve_gateway: true });
     setModalOpen(true);
   };
 
@@ -39,6 +42,7 @@ const PoolList: React.FC<Props> = ({ pools, loading, tenants, onSelect, onRefres
       const values = {
         ...raw,
         nameservers: raw.nameservers ? String(raw.nameservers).split(',').map((s: string) => s.trim()).filter(Boolean) : [],
+        parent_id: parentId || undefined,
       };
       if (editing) {
         const { data: resp } = await ipPoolAPI.update(editing.id, values);
@@ -59,6 +63,14 @@ const PoolList: React.FC<Props> = ({ pools, loading, tenants, onSelect, onRefres
     { title: 'Gateway', dataIndex: 'gateway', key: 'gateway' },
     { title: 'Netmask', dataIndex: 'netmask', key: 'netmask' },
     {
+      title: 'Type', dataIndex: 'pool_type', key: 'pool_type', width: 100,
+      render: (v: string) => v === 'subnet'
+        ? <Tag color="blue">Subnet</Tag>
+        : <Tag color="green">IP Pool</Tag>,
+      filters: [{ text: 'Subnet', value: 'subnet' }, { text: 'IP Pool', value: 'ip_pool' }],
+      onFilter: (value, record) => record.pool_type === value,
+    },
+    {
       title: 'VRF', dataIndex: 'vrf', key: 'vrf', render: (v: string) => v || '-',
       filters: [...new Set(pools.map(p => p.vrf).filter(Boolean))].map(v => ({ text: v, value: v })),
       onFilter: (value, record) => record.vrf === value,
@@ -66,6 +78,9 @@ const PoolList: React.FC<Props> = ({ pools, loading, tenants, onSelect, onRefres
     { title: 'Description', dataIndex: 'description', key: 'description', ellipsis: true },
     {
       title: 'Usage', key: 'usage', width: 180, render: (_, r) => {
+        if (r.pool_type === 'subnet') {
+          return <span>{r.child_count} subnet{r.child_count !== 1 ? 's' : ''}</span>;
+        }
         const pct = r.total_ips > 0 ? Math.round((r.used_ips / r.total_ips) * 100) : 0;
         return (
           <Space direction="vertical" size={0} style={{ width: '100%' }}>
@@ -81,7 +96,7 @@ const PoolList: React.FC<Props> = ({ pools, loading, tenants, onSelect, onRefres
         <Space>
           <Button size="small" type="link" onClick={() => onSelect(record)}>Manage</Button>
           <Button size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); openEdit(record); }} />
-          <Popconfirm title="Delete this pool and all its addresses?" onConfirm={() => onDelete(record.id)}>
+          <Popconfirm title="Delete this pool and all its contents?" onConfirm={() => onDelete(record.id)}>
             <Button size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
@@ -99,8 +114,28 @@ const PoolList: React.FC<Props> = ({ pools, loading, tenants, onSelect, onRefres
         <Table columns={columns} dataSource={pools} rowKey="id" loading={loading} size="small"
           onRow={(record) => ({ onClick: () => onSelect(record), style: { cursor: 'pointer' } })} />
       </Card>
-      <Modal title={editing ? 'Edit Pool' : 'Create Pool'} open={modalOpen} onOk={handleSubmit} onCancel={() => setModalOpen(false)} okText={editing ? 'Update' : 'Create'}>
+      <Modal title={editing ? 'Edit Pool' : 'Create Pool'} open={modalOpen} onOk={handleSubmit} onCancel={() => setModalOpen(false)} okText={editing ? 'Update' : 'Create'} width={520}>
         <Form form={form} layout="vertical">
+          {!editing && (
+            <>
+              <Form.Item
+                name="pool_type"
+                label={<Space>Select Subnet Action <Tooltip title="Choose how this subnet will be used"><InfoCircleOutlined /></Tooltip></Space>}
+              >
+                <Radio.Group>
+                  <Space direction="vertical">
+                    <Radio value="ip_pool">Generate IPs for the new subnet</Radio>
+                    <Radio value="subnet">Subnet will be divided into smaller subnets</Radio>
+                  </Space>
+                </Radio.Group>
+              </Form.Item>
+              {poolType === 'ip_pool' && (
+                <Form.Item name="reserve_gateway" valuePropName="checked">
+                  <Checkbox>Reserve Gateway IP</Checkbox>
+                </Form.Item>
+              )}
+            </>
+          )}
           <Form.Item name="network" label="Network (CIDR)" rules={[{ required: true }]}><Input placeholder="10.0.0.0/24" /></Form.Item>
           <Form.Item name="gateway" label="Gateway" rules={[{ required: true }]}><Input placeholder="10.0.0.1" /></Form.Item>
           <Form.Item name="netmask" label="Netmask"><Input placeholder="255.255.255.0" /></Form.Item>

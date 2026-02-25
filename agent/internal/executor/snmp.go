@@ -112,43 +112,70 @@ func (e *SNMPExecutor) HandleSNMPPoll(raw json.RawMessage) (interface{}, error) 
 	}, nil
 }
 
-// pollPortVLANs queries dot1dBasePortIfIndex and dot1qPvid to build ifIndex → PVID mapping.
+// pollPortVLANs discovers port VLAN assignments via multiple SNMP strategies.
+// Strategy 1: Q-BRIDGE-MIB — dot1dBasePortIfIndex + dot1qPvid (standard)
+// Strategy 2: Cisco vmVlan — CISCO-VLAN-MEMBERSHIP-MIB (Cisco IOS)
 func (e *SNMPExecutor) pollPortVLANs(version, community, switchIP string) map[int]int {
 	ifIndexToPvid := make(map[int]int)
 
-	// dot1dBasePortIfIndex: bridgePort -> ifIndex
-	bridgeOut, err := exec.Command("snmpwalk", version, "-c", community, switchIP, "1.3.6.1.2.1.17.1.4.1.2").CombinedOutput()
-	if err != nil {
-		e.logger.Debug("snmpwalk dot1dBasePortIfIndex failed", zap.Error(err))
-		return ifIndexToPvid
-	}
+	// --- Strategy 1: Q-BRIDGE-MIB (dot1qPvid) ---
+	// Build bridgePort → ifIndex mapping (may fail on some devices, that's OK)
 	bridgeToIfIndex := make(map[int]int)
-	for bp, val := range parseSNMPWalk(string(bridgeOut)) {
-		ifIdx, _ := strconv.Atoi(val)
-		if ifIdx > 0 {
-			bridgeToIfIndex[bp] = ifIdx
-		}
-	}
-
-	// dot1qPvid: bridgePort -> PVID
-	pvidOut, err := exec.Command("snmpwalk", version, "-c", community, switchIP, "1.3.6.1.2.1.17.7.1.4.5.1.1").CombinedOutput()
-	if err != nil {
-		e.logger.Debug("snmpwalk dot1qPvid failed", zap.Error(err))
-		return ifIndexToPvid
-	}
-	for bp, val := range parseSNMPWalk(string(pvidOut)) {
-		pvid, _ := strconv.Atoi(val)
-		if pvid > 0 {
-			if ifIdx, ok := bridgeToIfIndex[bp]; ok {
-				ifIndexToPvid[ifIdx] = pvid
-			} else {
-				// Some devices index dot1qPvid by ifIndex directly
-				ifIndexToPvid[bp] = pvid
+	bridgeOut, err := exec.Command("snmpwalk", version, "-c", community, switchIP, "1.3.6.1.2.1.17.1.4.1.2").CombinedOutput()
+	if err == nil {
+		for bp, val := range parseSNMPWalk(string(bridgeOut)) {
+			ifIdx, _ := strconv.Atoi(val)
+			if ifIdx > 0 {
+				bridgeToIfIndex[bp] = ifIdx
 			}
 		}
+		e.logger.Debug("dot1dBasePortIfIndex", zap.Int("count", len(bridgeToIfIndex)))
+	} else {
+		e.logger.Info("dot1dBasePortIfIndex not available, will try direct ifIndex mapping", zap.Error(err))
 	}
 
-	e.logger.Debug("polled port VLANs", zap.Int("count", len(ifIndexToPvid)))
+	// dot1qPvid: bridgePort (or ifIndex) → PVID
+	pvidOut, err := exec.Command("snmpwalk", version, "-c", community, switchIP, "1.3.6.1.2.1.17.7.1.4.5.1.1").CombinedOutput()
+	if err == nil {
+		for bp, val := range parseSNMPWalk(string(pvidOut)) {
+			pvid, _ := strconv.Atoi(val)
+			if pvid > 0 {
+				if ifIdx, ok := bridgeToIfIndex[bp]; ok {
+					ifIndexToPvid[ifIdx] = pvid
+				} else {
+					// Device indexes dot1qPvid by ifIndex directly
+					ifIndexToPvid[bp] = pvid
+				}
+			}
+		}
+	} else {
+		e.logger.Info("dot1qPvid not available", zap.Error(err))
+	}
+
+	if len(ifIndexToPvid) > 0 {
+		e.logger.Info("polled port VLANs via Q-BRIDGE-MIB", zap.Int("count", len(ifIndexToPvid)))
+		return ifIndexToPvid
+	}
+
+	// --- Strategy 2: Cisco vmVlan (CISCO-VLAN-MEMBERSHIP-MIB) ---
+	// OID 1.3.6.1.4.1.9.9.68.1.2.2.1.2 — indexed by ifIndex directly
+	vmOut, err := exec.Command("snmpwalk", version, "-c", community, switchIP, "1.3.6.1.4.1.9.9.68.1.2.2.1.2").CombinedOutput()
+	if err == nil {
+		for ifIdx, val := range parseSNMPWalk(string(vmOut)) {
+			vid, _ := strconv.Atoi(val)
+			if vid > 0 {
+				ifIndexToPvid[ifIdx] = vid
+			}
+		}
+		if len(ifIndexToPvid) > 0 {
+			e.logger.Info("polled port VLANs via Cisco vmVlan", zap.Int("count", len(ifIndexToPvid)))
+			return ifIndexToPvid
+		}
+	} else {
+		e.logger.Debug("Cisco vmVlan not available", zap.Error(err))
+	}
+
+	e.logger.Warn("no VLAN data discovered via SNMP", zap.String("switch_ip", switchIP))
 	return ifIndexToPvid
 }
 

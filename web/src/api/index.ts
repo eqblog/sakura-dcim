@@ -266,6 +266,11 @@ export const ipPoolAPI = {
     client.delete<APIResponse>(`/ip-pools/${poolId}/addresses/${addrId}`),
   assignNext: (poolId: string, serverId: string) =>
     client.post<APIResponse<IPAddress>>(`/ip-pools/${poolId}/assign`, { server_id: serverId }),
+  // Children (subdivision)
+  listChildren: (poolId: string) =>
+    client.get<APIResponse<IPPool[]>>(`/ip-pools/${poolId}/children`),
+  generateIPs: (poolId: string, reserveGateway: boolean) =>
+    client.post<APIResponse>(`/ip-pools/${poolId}/generate`, { reserve_gateway: reserveGateway }),
 };
 
 // Audit Logs

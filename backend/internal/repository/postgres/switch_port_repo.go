@@ -85,7 +85,7 @@ func (r *SwitchPortRepo) UpsertBySwitchAndIndex(ctx context.Context, port *domai
 			speed_mbps = EXCLUDED.speed_mbps,
 			oper_status = EXCLUDED.oper_status,
 			last_polled = EXCLUDED.last_polled,
-			vlan_id = CASE WHEN switch_ports.vlan_id = 0 THEN EXCLUDED.vlan_id ELSE switch_ports.vlan_id END`
+			vlan_id = CASE WHEN EXCLUDED.vlan_id > 0 THEN EXCLUDED.vlan_id ELSE switch_ports.vlan_id END`
 	_, err := r.db.Exec(ctx, query,
 		port.ID, port.SwitchID, port.PortIndex, port.PortName,
 		port.SpeedMbps, port.VlanID, port.AdminStatus, port.OperStatus, port.LastPolled)

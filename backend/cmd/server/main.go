@@ -107,6 +107,7 @@ func main() {
 	bandwidthService := service.NewBandwidthService(switchRepo, switchPortRepo, hub, logger)
 	inventoryService := service.NewInventoryService(inventoryRepo, serverRepo, hub, cfg, logger)
 	ipService := service.NewIPService(ipPoolRepo, ipAddressRepo)
+	ipService.SetSwitchDeps(switchService, switchPortRepo)
 	discoveryService := service.NewDiscoveryService(discoverySessionRepo, discoveredServerRepo, serverRepo, agentRepo, hub, logger)
 
 	// Wire InfluxDB into bandwidth service

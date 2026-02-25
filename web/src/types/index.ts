@@ -284,8 +284,14 @@ export interface IPPool {
   vlan_id: number;
   vlan_range_start: number;
   vlan_range_end: number;
+  vlan_mode: 'access' | 'trunk_native' | 'trunk';
+  native_vlan_id: number;
+  trunk_vlans: string;
+  parent_id?: string;
+  pool_type: 'ip_pool' | 'subnet';
   total_ips: number;
   used_ips: number;
+  child_count: number;
 }
 
 export interface IPAddress {

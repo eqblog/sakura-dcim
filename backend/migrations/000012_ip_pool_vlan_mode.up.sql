@@ -1,0 +1,3 @@
+ALTER TABLE ip_pools ADD COLUMN vlan_mode VARCHAR(20) NOT NULL DEFAULT 'access';
+ALTER TABLE ip_pools ADD COLUMN native_vlan_id INT NOT NULL DEFAULT 0;
+ALTER TABLE ip_pools ADD COLUMN trunk_vlans TEXT NOT NULL DEFAULT '';

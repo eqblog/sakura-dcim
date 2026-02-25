@@ -137,26 +137,40 @@ Inspired by [Tenantos](https://tenantos.com/) and [EasyDCIM](https://www.easydci
 - **Real-time Progress** — Agent sends pxe.status events → backend updates task + server status, frontend polls 5s
 
 #### Phase 6 — Switch Automation + Bandwidth Monitoring
-- **Switch CRUD** — Full management with SSH/SNMP credentials, vendor type (Cisco, Juniper, Arista, SONiC, Cumulus)
+- **Switch CRUD** — Full management with SSH/SNMP credentials, vendor type (Cisco, Juniper, Arista, SONiC, Cumulus, Huawei)
 - **Switch Port CRUD** — Port mapping with VLAN, speed, admin/oper status, server assignment
-- **SSH Port Provisioning** — One-click auto-configure via agent SSH executor with vendor-specific CLI templates
+- **Port Modes** — Access, Trunk, Trunk+Native VLAN modes with per-port configuration
+- **SSH Port Provisioning** — One-click auto-configure via agent SSH executor with vendor-specific CLI templates (6 vendors)
 - **Live Port Status** — Query real-time port state via agent SSH/SNMP
+- **SNMP Port Sync** — Auto-discover switch ports from SNMP (ifDescr, ifSpeed, ifOperStatus, ifAdminStatus)
+- **SNMP VLAN Sync** — Q-BRIDGE-MIB (dot1qPvid) + Cisco vmVlan fallback for VLAN discovery
+- **VLAN Summary** — Aggregated VLAN view showing port count and port names per VLAN
+- **Port Admin Toggle** — Enable/disable switch ports remotely via agent SSH
+- **DHCP Relay** — Configure DHCP relay on switch interfaces (per-vendor CLI)
 - **SNMP Bandwidth Polling** — Agent polls ifInOctets/ifOutOctets via snmpwalk, sends data to backend
 - **95th Percentile** — Bandwidth summary with 95th percentile, average, and max calculations
 - **Bandwidth Tab** — Per-server bandwidth stats with period selector (hourly/daily/monthly)
 - **Agent Switch Executor** — SSH session management (golang.org/x/crypto/ssh) with vendor command templates
 - **Agent SNMP Executor** — snmpwalk-based interface counter polling with parsed port traffic data
-- **DB Migration** — Version-controlled migration adding SSH creds, vendor, VLAN, status fields
+- **DB Migration** — Version-controlled migrations: SSH creds, vendor, VLAN, port modes, unique index
 
 #### Phase 7 — Hardware Inventory + IP Pool Management
 - **Inventory Scan** — Agent-triggered hardware detection (lscpu, dmidecode, lsblk, ip addr) stored per-component
 - **Inventory Tab** — Rich component display: CPU details, disk table (SSD/HDD/NVMe), network interfaces, memory & system info
 - **Inventory Events** — Agent can push inventory.result events for automatic collection
 - **IP Pool CRUD** — CIDR-based pools with gateway, usage progress bar (total/used counts)
+- **IP Pool Hierarchy** — Unlimited nesting: /16 → /24 → /28 with breadcrumb navigation stack
+- **Pool Types** — IP Pool (leaf, has individual IPs) or Subnet (container, holds child pools)
+- **IP Generation** — Auto-generate all host IPs for a CIDR range, skip network + broadcast addresses
+- **Gateway Reservation** — Optionally mark gateway IP as "reserved" during IP generation
+- **CIDR Validation** — Child subnets must be within parent CIDR range
 - **IP Address CRUD** — Per-pool address management with status (available/assigned/reserved) and server assignment
 - **Auto-Assign** — One-click next-available IP assignment from pool to server
+- **Switch Automation VLAN Mode** — Per-pool VLAN config: Access / Trunk+Native / Trunk mode selection
+- **Auto-Provision on IP Assign** — When IP assigned to server, auto-configure server's switch port with pool's VLAN settings via agent SSH
+- **Auto-Revert on IP Unassign** — When IP unassigned, revert switch port to default access mode
 - **Backend Repository Layer** — InventoryRepository (upsert/list/delete), IPPoolRepository, IPAddressRepository with PostgreSQL
-- **Backend Services** — InventoryService (scan via agent, store results), IPService (pool/address CRUD, auto-assign)
+- **Backend Services** — InventoryService (scan via agent, store results), IPService (pool/address CRUD, auto-assign, switch provisioning)
 - **RBAC Protected** — `inventory.view`, `inventory.scan`, `ip.manage` permissions
 
 #### Phase 8 — White-Label + Multi-Tenant Polish
@@ -205,7 +219,7 @@ sakura-dcim/
 │   │   ├── service/           # Business logic
 │   │   ├── websocket/         # Agent WS hub + protocol
 │   │   └── pkg/crypto/        # AES-256-GCM, JWT, bcrypt
-│   └── migrations/            # SQL schema (17 tables)
+│   └── migrations/            # SQL schema (17 tables, 12 migrations)
 │
 ├── agent/                      # Lightweight Go agent (per datacenter)
 │   ├── cmd/agent/main.go       # Entry point
@@ -245,11 +259,12 @@ agents (remote datacenter agents)
                               ├── disk_layouts
                               └── scripts (post-install)
 
-switches (SNMP)
-  └── switch_ports ──► servers
+switches (SNMP + SSH)
+  └── switch_ports ──► servers (port_mode: access/trunk/trunk_native)
 
-ip_pools
-  └── ip_addresses ──► servers
+ip_pools (hierarchical: parent_id self-ref, pool_type: ip_pool/subnet)
+  ├── ip_pools (children)
+  └── ip_addresses ──► servers (switch auto-provision on assign)
 
 audit_logs (all mutations logged)
 ```
@@ -278,8 +293,10 @@ WebSocket + JSON, request/response with correlation IDs:
 | `pxe.prepare` | Panel → Agent | Configure DHCP/TFTP for reinstall |
 | `pxe.status` | Agent → Panel | Installation progress updates |
 | `raid.configure` | Panel → Agent | Set up RAID before OS install |
-| `switch.provision` | Panel → Agent | Auto-configure switch port (VLAN, speed, description) |
+| `switch.provision` | Panel → Agent | Auto-configure switch port (VLAN mode, speed, description) |
+| `switch.port_admin` | Panel → Agent | Toggle port admin status (up/down) via SSH |
 | `switch.status` | Panel → Agent | Query switch port status via SSH/SNMP |
+| `switch.dhcp_relay` | Panel → Agent | Configure DHCP relay on switch interface |
 | `inventory.scan` | Panel → Agent | Trigger hardware detection |
 | `snmp.poll` | Panel → Agent | Poll switch bandwidth counters |
 
@@ -424,9 +441,21 @@ Resources:
   CRUD   /api/v1/switches/:id/ports  # Switch port management ✅
   POST   /api/v1/switches/:id/ports/:portId/provision  # Auto-provision port ✅
   GET    /api/v1/switches/:id/ports/:portId/status     # Live port status ✅
+  POST   /api/v1/switches/:id/ports/:portId/admin      # Toggle port admin up/down ✅
+  POST   /api/v1/switches/:id/sync-ports               # SNMP port sync ✅
+  POST   /api/v1/switches/:id/test                     # Test switch connection ✅
+  POST   /api/v1/switches/:id/snmp-poll                # Poll SNMP bandwidth ✅
+  GET    /api/v1/switches/:id/vlans                    # VLAN summary ✅
+  POST   /api/v1/switches/:id/dhcp-relay               # Configure DHCP relay ✅
+  GET    /api/v1/switches/templates                    # Vendor command templates ✅
+  GET    /api/v1/switches/server/:serverId/ports       # Ports linked to server ✅
+  PUT    /api/v1/switches/ports/:portId/link           # Link port to server ✅
+  PUT    /api/v1/switches/ports/:portId/unlink         # Unlink port from server ✅
   CRUD   /api/v1/ip-pools             # IP address pools ✅
   CRUD   /api/v1/ip-pools/:id/addresses         # IP addresses per pool ✅
-  POST   /api/v1/ip-pools/:id/assign            # Auto-assign next available ✅
+  POST   /api/v1/ip-pools/:id/assign            # Auto-assign next available (+ switch auto-provision) ✅
+  GET    /api/v1/ip-pools/:id/children          # List child pools (hierarchy) ✅
+  POST   /api/v1/ip-pools/:id/generate          # Generate all host IPs for CIDR ✅
   CRUD   /api/v1/users                # User management
   CRUD   /api/v1/roles                # Role management
   CRUD   /api/v1/tenants              # Tenant management
@@ -508,14 +537,21 @@ Monitoring:
 
 ### Phase 6 — Switch Automation & Bandwidth Monitoring ✅
 - [x] `backend` Switch CRUD handler + service (SSH/Netconf credentials, vendor type)
-- [x] `backend` Switch port mapping handler (assign port → server)
+- [x] `backend` Switch port mapping handler (assign port → server, link/unlink)
 - [x] `backend` Switch port provisioning service: auto-configure VLAN, speed, description via agent SSH
+- [x] `backend` Port modes: access, trunk, trunk_native with per-port VLAN config
+- [x] `backend` SNMP port sync: auto-discover ports from switch SNMP (ifDescr, speed, status)
+- [x] `backend` SNMP VLAN sync: Q-BRIDGE-MIB + Cisco vmVlan fallback
+- [x] `backend` VLAN summary: aggregated port count per VLAN
+- [x] `backend` Port admin toggle: enable/disable ports via agent SSH
+- [x] `backend` DHCP relay configuration via agent SSH (per-vendor)
 - [x] `backend` Bandwidth service: 95th percentile, avg, max calculation with period filtering
 - [x] `backend` Bandwidth handler: GET /servers/:id/bandwidth with period parameter
-- [x] `backend` DB migration: 000002_switch_automation (SSH creds, vendor, VLAN, status fields)
-- [x] `agent` Switch executor: SSH session management (golang.org/x/crypto/ssh) + vendor-specific CLI templates (Cisco, Juniper, Arista, SONiC, Cumulus)
-- [x] `agent` SNMP executor: snmpwalk-based interface counter polling (ifDescr/ifInOctets/ifOutOctets/ifSpeed/ifOperStatus)
+- [x] `backend` DB migrations: 000002 (switch automation), 000008 (unique index), 000010 (port modes)
+- [x] `agent` Switch executor: SSH session management (golang.org/x/crypto/ssh) + vendor-specific CLI templates (Cisco, Juniper, Arista, SONiC, Cumulus, Huawei)
+- [x] `agent` SNMP executor: snmpwalk-based interface counter polling + VLAN discovery (Q-BRIDGE + Cisco)
 - [x] `web` Switches page: CRUD with SSH/SNMP credentials + port management table + provision button
+- [x] `web` Switch detail: port table with mode/VLAN config, sync, VLAN summary tab
 - [x] `web` Server Bandwidth tab: per-port stats with 95th percentile, period selector
 - [x] `web` Bandwidth overview page: switch list with SNMP status
 
@@ -524,13 +560,23 @@ Monitoring:
 - [x] `backend` Inventory service: store scan results per-component (upsert), handle agent events
 - [x] `backend` Inventory repository: PostgreSQL upsert/list/delete for server_inventory table
 - [x] `backend` IP Pool CRUD handler + service (with usage counts)
+- [x] `backend` IP Pool hierarchy: parent_id self-referencing FK, pool_type (ip_pool/subnet)
+- [x] `backend` IP Pool CIDR validation: child subnet must be within parent range
+- [x] `backend` IP generation: enumerate host IPs from CIDR, skip network+broadcast, reserve gateway
 - [x] `backend` IP Address CRUD handler + service (status: available/assigned/reserved)
 - [x] `backend` IP Address auto-assign logic (next available from pool)
-- [x] `backend` IP Pool/Address repositories: full CRUD + GetNextAvailable
+- [x] `backend` Switch automation VLAN mode: access/trunk_native/trunk per IP pool
+- [x] `backend` Auto-provision switch port on IP assign (VLAN config → agent SSH)
+- [x] `backend` Auto-revert switch port on IP unassign/delete
+- [x] `backend` IP Pool/Address repositories: full CRUD + GetNextAvailable + ListByParentID
+- [x] `backend` DB migrations: 000007 (VRF), 000009 (advanced fields), 000011 (hierarchy), 000012 (VLAN mode)
 - [x] `agent` Inventory scanner: lscpu, dmidecode, lsblk -J, ip -j addr show (already existed)
 - [x] `web` Server Inventory tab: CPU details, disk table, network interfaces, memory/system raw output
-- [x] `web` IP Pools page: pool CRUD + usage progress bar + address management panel
-- [x] `web` IP Address CRUD: add/edit/delete with status filter
+- [x] `web` IP Pools page: hierarchical pool CRUD with breadcrumb navigation stack
+- [x] `web` Pool types: "Generate IPs" (leaf) vs "Divide into subnets" (container) on creation
+- [x] `web` Subnet config: VLAN mode selector (Access / Trunk+Native / Trunk) with conditional fields
+- [x] `web` Child subnets tab: nested pool table with drill-down navigation
+- [x] `web` IP Address CRUD: add/edit/delete with status filter + usage progress bar
 - [x] `agent` PXE inventory mode: boot to mini-Linux, scan, report, reboot (dnsmasq + IPMI PXE boot)
 - [x] `web` IP assignment modal in server detail (pool selection, assign/unassign)
 

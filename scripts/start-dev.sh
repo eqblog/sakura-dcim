@@ -23,9 +23,14 @@ echo "========================================="
 echo "  Sakura DCIM — Starting Development"
 echo "========================================="
 
+# ─── Auto-pull latest code ───
+echo ""
+echo "[0/9] Pulling latest code..."
+cd "$ROOT" && git pull --ff-only 2>&1 || echo "  WARNING: git pull failed, continuing with local code."
+
 # ─── Kill old processes from previous runs ───
 echo ""
-echo "[0/8] Cleaning up old processes..."
+echo "[1/9] Cleaning up old processes..."
 # Kill old agent/backend go processes
 pkill -f 'go run ./cmd/agent' 2>/dev/null || true
 pkill -f 'go run ./cmd/server' 2>/dev/null || true
@@ -52,7 +57,7 @@ install_pkg() {
 
 # ─── 1. Install dependencies if missing ───
 echo ""
-echo "[1/8] Checking & installing dependencies..."
+echo "[2/9] Checking & installing dependencies..."
 
 # curl
 if ! command -v curl &>/dev/null; then
@@ -192,10 +197,10 @@ echo "  OK"
 echo ""
 
 # ─── 2. Start infrastructure ───
-echo "[2/8] Starting PostgreSQL, Redis, InfluxDB..."
+echo "[3/9] Starting PostgreSQL, Redis, InfluxDB..."
 cd "$ROOT" && docker compose up -d postgres redis influxdb
 
-echo "[3/8] Waiting for PostgreSQL to be ready..."
+echo "[4/9] Waiting for PostgreSQL to be ready..."
 for i in $(seq 1 30); do
   if docker exec sakura-postgres pg_isready -U sakura -d sakura_dcim -q 2>/dev/null; then
     echo "  PostgreSQL ready."
@@ -209,16 +214,16 @@ for i in $(seq 1 30); do
 done
 
 # ─── 3. Run migrations ───
-echo "[4/8] Running database migrations..."
+echo "[5/9] Running database migrations..."
 cd "$ROOT/backend" && go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest \
   -path migrations -database "postgres://sakura:sakura@localhost:5432/sakura_dcim?sslmode=disable" up 2>&1 || true
 
 # ─── 4. Install frontend dependencies ───
-echo "[5/8] Installing frontend dependencies..."
+echo "[6/9] Installing frontend dependencies..."
 cd "$ROOT/web" && npm install --silent
 
 # ─── 5. Start backend ───
-echo "[6/8] Starting backend on port ${BACKEND_PORT}..."
+echo "[7/9] Starting backend on port ${BACKEND_PORT}..."
 cd "$ROOT/backend" && go run ./cmd/server &
 BACKEND_PID=$!
 
@@ -236,7 +241,7 @@ for i in $(seq 1 30); do
 done
 
 # ─── 6. Build KVM Docker image ───
-echo "[7/8] Building KVM browser image..."
+echo "[8/9] Building KVM browser image..."
 if ! docker images --format '{{.Repository}}:{{.Tag}}' | grep -q 'sakura-dcim/kvm-browser:latest'; then
   docker build -t sakura-dcim/kvm-browser:latest "$ROOT/docker/kvm-browser/"
   echo "  KVM image built."
@@ -245,7 +250,7 @@ else
 fi
 
 # ─── 7. Auto-create local dev agent ───
-echo "[8/8] Setting up local dev agent..."
+echo "[9/9] Setting up local dev agent..."
 AGENT_CONFIG="$ROOT/agent/.dev-config.yaml"
 AGENT_PID=""
 

@@ -62,8 +62,14 @@ type IPPool struct {
 	VlanID           int        `json:"vlan_id" db:"vlan_id"`
 	VlanRangeStart   int        `json:"vlan_range_start" db:"vlan_range_start"`
 	VlanRangeEnd     int        `json:"vlan_range_end" db:"vlan_range_end"`
+	VlanMode         string     `json:"vlan_mode" db:"vlan_mode"`               // "access", "trunk_native", "trunk"
+	NativeVlanID     int        `json:"native_vlan_id" db:"native_vlan_id"`
+	TrunkVlans       string     `json:"trunk_vlans" db:"trunk_vlans"`
+	ParentID         *uuid.UUID `json:"parent_id,omitempty" db:"parent_id"`
+	PoolType         string     `json:"pool_type" db:"pool_type"` // "ip_pool" or "subnet"
 	TotalIPs         int        `json:"total_ips" db:"-"`
 	UsedIPs          int        `json:"used_ips" db:"-"`
+	ChildCount       int        `json:"child_count" db:"-"`
 }
 
 type IPAddress struct {
@@ -76,10 +82,13 @@ type IPAddress struct {
 }
 
 type IPPoolCreateRequest struct {
-	TenantID    *uuid.UUID `json:"tenant_id"`
-	Network     string     `json:"network" binding:"required"`
-	Gateway     string     `json:"gateway" binding:"required"`
-	Description string     `json:"description"`
+	TenantID       *uuid.UUID `json:"tenant_id"`
+	ParentID       *uuid.UUID `json:"parent_id"`
+	Network        string     `json:"network" binding:"required"`
+	Gateway        string     `json:"gateway" binding:"required"`
+	Description    string     `json:"description"`
+	PoolType       string     `json:"pool_type"`
+	ReserveGateway bool       `json:"reserve_gateway"`
 }
 
 type IPAddressCreateRequest struct {

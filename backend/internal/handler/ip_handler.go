@@ -33,6 +33,10 @@ func (h *IPHandler) RegisterRoutes(r *gin.RouterGroup) {
 		g.PUT("/:id/addresses/:addrId", h.UpdateAddress)
 		g.DELETE("/:id/addresses/:addrId", h.DeleteAddress)
 
+		// Children (subdivision)
+		g.GET("/:id/children", h.ListChildPools)
+		g.POST("/:id/generate", h.GeneratePoolIPs)
+
 		// Auto-assign
 		g.POST("/:id/assign", h.AssignNextAvailable)
 	}
@@ -62,15 +66,24 @@ func (h *IPHandler) GetPool(c *gin.Context) {
 }
 
 func (h *IPHandler) CreatePool(c *gin.Context) {
-	var pool domain.IPPool
-	if err := c.ShouldBindJSON(&pool); err != nil {
+	var req struct {
+		domain.IPPool
+		ReserveGateway bool `json:"reserve_gateway"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
 		return
 	}
-	result, err := h.svc.CreatePool(c.Request.Context(), &pool)
+	pool := &req.IPPool
+	result, err := h.svc.CreatePool(c.Request.Context(), pool)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: err.Error()})
 		return
+	}
+	// Auto-generate IPs for ip_pool type if requested
+	if pool.PoolType == "ip_pool" && req.ReserveGateway {
+		_ = h.svc.GeneratePoolIPs(c.Request.Context(), result.ID, true)
+		result, _ = h.svc.GetPool(c.Request.Context(), result.ID)
 	}
 	c.JSON(http.StatusCreated, domain.APIResponse{Success: true, Data: result})
 }
@@ -170,6 +183,37 @@ func (h *IPHandler) DeleteAddress(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Message: "address deleted"})
+}
+
+func (h *IPHandler) ListChildPools(c *gin.Context) {
+	parentID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: "invalid pool ID"})
+		return
+	}
+	pools, err := h.svc.ListChildPools(c.Request.Context(), parentID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: "failed to list child pools"})
+		return
+	}
+	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: pools})
+}
+
+func (h *IPHandler) GeneratePoolIPs(c *gin.Context) {
+	poolID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: "invalid pool ID"})
+		return
+	}
+	var req struct {
+		ReserveGateway bool `json:"reserve_gateway"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	if err := h.svc.GeneratePoolIPs(c.Request.Context(), poolID, req.ReserveGateway); err != nil {
+		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Message: "IPs generated"})
 }
 
 func (h *IPHandler) AssignNextAvailable(c *gin.Context) {

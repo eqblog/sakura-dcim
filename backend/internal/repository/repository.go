@@ -105,6 +105,7 @@ type IPPoolRepository interface {
 	Create(ctx context.Context, pool *domain.IPPool) error
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.IPPool, error)
 	List(ctx context.Context, tenantID *uuid.UUID) ([]domain.IPPool, error)
+	ListByParentID(ctx context.Context, parentID uuid.UUID) ([]domain.IPPool, error)
 	Update(ctx context.Context, pool *domain.IPPool) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
