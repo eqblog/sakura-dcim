@@ -101,7 +101,7 @@ func (e *KVMExecutor) HandleKVMStart(raw json.RawMessage) (interface{}, error) {
 		"-e", fmt.Sprintf("TARGET_URL=%s", targetURL),
 		"-e", "SCREEN_WIDTH=1280",
 		"-e", "SCREEN_HEIGHT=1024",
-		"--memory=512m",
+		"--memory=1g",
 		"--cpus=1",
 		kvmImageName,
 	}
@@ -129,8 +129,11 @@ func (e *KVMExecutor) HandleKVMStart(raw json.RawMessage) (interface{}, error) {
 		return nil, fmt.Errorf("failed to parse VNC port from: %s", string(portOut))
 	}
 
-	// Wait for VNC to be ready
-	if err := waitForTCP(gateway+":"+vncPort, 30*time.Second); err != nil {
+	// Wait for VNC server to be fully ready (RFB handshake, not just TCP)
+	if err := waitForVNC(gateway+":"+vncPort, 30*time.Second); err != nil {
+		// Log container status for diagnostics
+		out, _ := exec.Command("docker", "logs", "--tail", "20", containerName).CombinedOutput()
+		e.logger.Error("VNC not ready, container logs", zap.String("logs", string(out)))
 		exec.Command("docker", "rm", "-f", containerName).Run()
 		return nil, fmt.Errorf("VNC not ready: %w", err)
 	}
@@ -215,10 +218,45 @@ func (e *KVMExecutor) relayVNC(ctx context.Context, session *kvmSession, relayUR
 	}
 	defer wsConn.Close()
 
+	// Connect to VNC with retry — x11vnc may briefly refuse after the readiness probe
 	vncAddr := gateway + ":" + session.vncPort
-	vncConn, err := net.DialTimeout("tcp", vncAddr, 5*time.Second)
-	if err != nil {
-		e.logger.Error("failed to connect to VNC", zap.Error(err), zap.String("addr", vncAddr))
+	var vncConn net.Conn
+	for attempt := 1; attempt <= 10; attempt++ {
+		vncConn, err = net.DialTimeout("tcp", vncAddr, 5*time.Second)
+		if err != nil {
+			e.logger.Warn("VNC connect failed, retrying",
+				zap.String("session_id", session.sessionID),
+				zap.Int("attempt", attempt),
+				zap.Error(err))
+			time.Sleep(time.Second)
+			continue
+		}
+		// Verify x11vnc is actually serving (peek at first byte)
+		vncConn.SetReadDeadline(time.Now().Add(3 * time.Second))
+		peek := make([]byte, 1)
+		if _, err = vncConn.Read(peek); err != nil {
+			e.logger.Warn("VNC connection not ready (EOF/timeout), retrying",
+				zap.String("session_id", session.sessionID),
+				zap.Int("attempt", attempt),
+				zap.Error(err))
+			vncConn.Close()
+			vncConn = nil
+			time.Sleep(time.Second)
+			continue
+		}
+		vncConn.SetReadDeadline(time.Time{}) // clear deadline
+
+		// We consumed 1 byte — prepend it via a wrapper so the relay gets all data
+		vncConn = &prefixConn{first: peek, Conn: vncConn}
+		break
+	}
+	if vncConn == nil {
+		// Log container status for diagnostics
+		out, _ := exec.Command("docker", "logs", "--tail", "20", session.containerID).CombinedOutput()
+		e.logger.Error("failed to connect to VNC after retries",
+			zap.String("session_id", session.sessionID),
+			zap.String("addr", vncAddr),
+			zap.String("container_logs", string(out)))
 		return
 	}
 	defer vncConn.Close()
@@ -355,15 +393,43 @@ func buildKVMTargetURL(bmcType, ip string) string {
 	}
 }
 
-func waitForTCP(addr string, timeout time.Duration) error {
+// prefixConn wraps a net.Conn, prepending already-read bytes to the stream.
+type prefixConn struct {
+	first []byte
+	net.Conn
+}
+
+func (c *prefixConn) Read(b []byte) (int, error) {
+	if len(c.first) > 0 {
+		n := copy(b, c.first)
+		c.first = c.first[n:]
+		return n, nil
+	}
+	return c.Conn.Read(b)
+}
+
+// waitForVNC waits until x11vnc is serving the RFB protocol (not just TCP).
+// A simple TCP check can succeed before x11vnc is stable, leading to EOF on
+// the real connection. This reads the RFB version header to confirm readiness.
+func waitForVNC(addr string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		conn, err := net.DialTimeout("tcp", addr, time.Second)
-		if err == nil {
-			conn.Close()
+		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+		if err != nil {
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+		// Try to read the RFB protocol version (e.g. "RFB 003.008\n", 12 bytes)
+		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		buf := make([]byte, 12)
+		_, err = io.ReadFull(conn, buf)
+		conn.Close()
+		if err == nil && len(buf) >= 4 && string(buf[:4]) == "RFB " {
+			// x11vnc is serving VNC protocol — ready
 			return nil
 		}
-		time.Sleep(time.Second)
+		// Got EOF or garbage — x11vnc not ready yet, retry
+		time.Sleep(500 * time.Millisecond)
 	}
-	return fmt.Errorf("timeout waiting for %s", addr)
+	return fmt.Errorf("timeout waiting for VNC at %s", addr)
 }

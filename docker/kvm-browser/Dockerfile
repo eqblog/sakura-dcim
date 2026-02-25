@@ -3,6 +3,7 @@ FROM alpine:3.21
 RUN apk add --no-cache \
     xvfb \
     x11vnc \
+    xdpyinfo \
     chromium \
     font-noto \
     font-noto-cjk \
