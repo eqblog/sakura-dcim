@@ -320,6 +320,10 @@ func parseDockerPort(output string) string {
 
 // buildKVMTargetURL returns the vendor-specific BMC web UI URL for Chromium kiosk mode.
 func buildKVMTargetURL(bmcType, ip string) string {
+	// Strip CIDR notation if present (e.g. "10.0.0.1/32" → "10.0.0.1")
+	if idx := strings.IndexByte(ip, '/'); idx != -1 {
+		ip = ip[:idx]
+	}
 	switch bmcType {
 	case "dell_idrac":
 		return fmt.Sprintf("https://%s/restgui/start.html", ip)

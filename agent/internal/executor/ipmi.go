@@ -66,6 +66,11 @@ type PowerPayload struct {
 }
 
 func (e *IPMIExecutor) runIPMI(bmcType, ip, user, pass string, args ...string) (string, error) {
+	// Strip CIDR notation if present (e.g. "10.0.0.1/32" → "10.0.0.1")
+	if idx := strings.IndexByte(ip, '/'); idx != -1 {
+		ip = ip[:idx]
+	}
+
 	cmdArgs := []string{"-I", "lanplus", "-H", ip, "-U", user, "-P", pass}
 
 	// Vendor-specific ipmitool parameters
