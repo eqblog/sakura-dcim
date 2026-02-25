@@ -207,6 +207,13 @@ export const switchAPI = {
     client.post<APIResponse>(`/switches/${switchId}/ports/${portId}/provision`),
   getPortStatus: (switchId: string, portId: string) =>
     client.get<APIResponse>(`/switches/${switchId}/ports/${portId}/status`),
+  // Server↔Port linkage
+  listPortsByServer: (serverId: string) =>
+    client.get<APIResponse>(`/switches/server/${serverId}/ports`),
+  linkPort: (portId: string, serverId: string) =>
+    client.put<APIResponse>(`/switches/ports/${portId}/link`, { server_id: serverId }),
+  unlinkPort: (portId: string) =>
+    client.put<APIResponse>(`/switches/ports/${portId}/unlink`),
   // Command templates
   getCommandTemplates: (vendor?: string) =>
     client.get<APIResponse>(`/switches/templates`, { params: vendor ? { vendor } : undefined }),

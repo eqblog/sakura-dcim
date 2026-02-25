@@ -39,6 +39,11 @@ func (h *SwitchHandler) RegisterRoutes(r *gin.RouterGroup) {
 		// Provisioning & status
 		g.POST("/:id/ports/:portId/provision", h.ProvisionPort)
 		g.GET("/:id/ports/:portId/status", h.GetPortStatus)
+
+		// Server↔Port linkage
+		g.GET("/server/:serverId/ports", h.ListPortsByServer)
+		g.PUT("/ports/:portId/link", h.LinkPort)
+		g.PUT("/ports/:portId/unlink", h.UnlinkPort)
 	}
 }
 
@@ -214,6 +219,60 @@ func (h *SwitchHandler) GetCommandTemplates(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: templates})
+}
+
+// Server↔Port linkage handlers
+
+func (h *SwitchHandler) ListPortsByServer(c *gin.Context) {
+	serverID, err := uuid.Parse(c.Param("serverId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: "invalid server ID"})
+		return
+	}
+	ports, err := h.svc.GetPortsWithSwitchInfo(c.Request.Context(), serverID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: "failed to list ports"})
+		return
+	}
+	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: ports})
+}
+
+func (h *SwitchHandler) LinkPort(c *gin.Context) {
+	portID, err := uuid.Parse(c.Param("portId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: "invalid port ID"})
+		return
+	}
+	var req struct {
+		ServerID string `json:"server_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: err.Error()})
+		return
+	}
+	serverID, err := uuid.Parse(req.ServerID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: "invalid server ID"})
+		return
+	}
+	if err := h.svc.LinkPortToServer(c.Request.Context(), portID, serverID); err != nil {
+		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Message: "port linked to server"})
+}
+
+func (h *SwitchHandler) UnlinkPort(c *gin.Context) {
+	portID, err := uuid.Parse(c.Param("portId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: "invalid port ID"})
+		return
+	}
+	if err := h.svc.UnlinkPort(c.Request.Context(), portID); err != nil {
+		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Message: "port unlinked"})
 }
 
 func (h *SwitchHandler) GetPortStatus(c *gin.Context) {

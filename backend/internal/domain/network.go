@@ -36,6 +36,13 @@ type SwitchPort struct {
 	LastPolled  *time.Time `json:"last_polled,omitempty" db:"last_polled"`
 }
 
+// SwitchPortWithSwitch extends SwitchPort with parent switch info for display purposes.
+type SwitchPortWithSwitch struct {
+	SwitchPort
+	SwitchName string `json:"switch_name"`
+	SwitchIP   string `json:"switch_ip"`
+}
+
 type IPPool struct {
 	ID          uuid.UUID  `json:"id" db:"id"`
 	TenantID    *uuid.UUID `json:"tenant_id,omitempty" db:"tenant_id"`

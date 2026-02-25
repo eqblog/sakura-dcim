@@ -95,6 +95,66 @@ func (s *SwitchService) GetPortsByServerID(ctx context.Context, serverID uuid.UU
 	return s.portRepo.GetByServerID(ctx, serverID)
 }
 
+// GetPortsWithSwitchInfo returns ports linked to a server, enriched with switch name/IP.
+func (s *SwitchService) GetPortsWithSwitchInfo(ctx context.Context, serverID uuid.UUID) ([]domain.SwitchPortWithSwitch, error) {
+	ports, err := s.portRepo.GetByServerID(ctx, serverID)
+	if err != nil {
+		return nil, err
+	}
+	if len(ports) == 0 {
+		return []domain.SwitchPortWithSwitch{}, nil
+	}
+
+	// Collect unique switch IDs
+	switchIDs := make(map[uuid.UUID]struct{})
+	for _, p := range ports {
+		switchIDs[p.SwitchID] = struct{}{}
+	}
+
+	// Batch-fetch switch details
+	switchMap := make(map[uuid.UUID]*domain.Switch)
+	for id := range switchIDs {
+		sw, err := s.switchRepo.GetByID(ctx, id)
+		if err != nil {
+			s.logger.Warn("failed to fetch switch for port enrichment", zap.String("switch_id", id.String()))
+			continue
+		}
+		switchMap[id] = sw
+	}
+
+	// Build enriched result
+	result := make([]domain.SwitchPortWithSwitch, 0, len(ports))
+	for _, p := range ports {
+		item := domain.SwitchPortWithSwitch{SwitchPort: p}
+		if sw, ok := switchMap[p.SwitchID]; ok {
+			item.SwitchName = sw.Name
+			item.SwitchIP = sw.IP
+		}
+		result = append(result, item)
+	}
+	return result, nil
+}
+
+// LinkPortToServer sets the server_id on a switch port.
+func (s *SwitchService) LinkPortToServer(ctx context.Context, portID, serverID uuid.UUID) error {
+	port, err := s.portRepo.GetByID(ctx, portID)
+	if err != nil {
+		return fmt.Errorf("port not found: %w", err)
+	}
+	port.ServerID = &serverID
+	return s.portRepo.Update(ctx, port)
+}
+
+// UnlinkPort clears the server_id from a switch port.
+func (s *SwitchService) UnlinkPort(ctx context.Context, portID uuid.UUID) error {
+	port, err := s.portRepo.GetByID(ctx, portID)
+	if err != nil {
+		return fmt.Errorf("port not found: %w", err)
+	}
+	port.ServerID = nil
+	return s.portRepo.Update(ctx, port)
+}
+
 // ProvisionPort sends an SSH command to configure a switch port via the agent.
 func (s *SwitchService) ProvisionPort(ctx context.Context, switchID uuid.UUID, portID uuid.UUID) error {
 	sw, err := s.switchRepo.GetByID(ctx, switchID)

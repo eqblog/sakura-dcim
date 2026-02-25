@@ -9,6 +9,8 @@ import {
   KeyOutlined,
   EyeOutlined,
   EyeInvisibleOutlined,
+  SendOutlined,
+  LoginOutlined,
 } from '@ant-design/icons';
 import { serverAPI } from '../../../api';
 
@@ -16,6 +18,22 @@ import { serverAPI } from '../../../api';
 import RFB from '@novnc/novnc/lib/rfb';
 
 const { Text } = Typography;
+
+// X11 keysym constants for special keys
+const XK_Tab = 0xFF09;
+const XK_Return = 0xFF0D;
+
+/** Send a text string to VNC character-by-character via sendKey (press+release). */
+const sendTextToVnc = (rfb: any, text: string) => {
+  for (const char of text) {
+    rfb.sendKey(char.charCodeAt(0));
+  }
+};
+
+/** Send a single special key to VNC. */
+const sendKeyToVnc = (rfb: any, keysym: number) => {
+  rfb.sendKey(keysym);
+};
 
 interface KvmTabProps {
   serverId: string;
@@ -132,6 +150,33 @@ const KvmTab: React.FC<KvmTabProps> = ({ serverId }) => {
     }
   }, []);
 
+  const handleSendUsername = useCallback(() => {
+    if (rfbRef.current && tempUser) {
+      sendTextToVnc(rfbRef.current, tempUser);
+    }
+  }, [tempUser]);
+
+  const handleSendPassword = useCallback(() => {
+    if (rfbRef.current && tempPass) {
+      sendTextToVnc(rfbRef.current, tempPass);
+    }
+  }, [tempPass]);
+
+  const handleAutoLogin = useCallback(() => {
+    if (!rfbRef.current || !tempUser || !tempPass) return;
+    const rfb = rfbRef.current;
+    sendTextToVnc(rfb, tempUser);
+    setTimeout(() => {
+      sendKeyToVnc(rfb, XK_Tab);
+      setTimeout(() => {
+        sendTextToVnc(rfb, tempPass);
+        setTimeout(() => {
+          sendKeyToVnc(rfb, XK_Return);
+        }, 100);
+      }, 100);
+    }, 100);
+  }, [tempUser, tempPass]);
+
   useEffect(() => {
     const handler = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', handler);
@@ -183,6 +228,11 @@ const KvmTab: React.FC<KvmTabProps> = ({ serverId }) => {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Text type="secondary" style={{ width: 80, flexShrink: 0 }}>Username:</Text>
               <Text copyable strong>{tempUser}</Text>
+              {status === 'connected' && (
+                <Tooltip title="Type username into VNC">
+                  <Button size="small" icon={<SendOutlined />} onClick={handleSendUsername}>Send</Button>
+                </Tooltip>
+              )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Text type="secondary" style={{ width: 80, flexShrink: 0 }}>Password:</Text>
@@ -195,10 +245,24 @@ const KvmTab: React.FC<KvmTabProps> = ({ serverId }) => {
                 iconRender={(visible) => visible ? <EyeOutlined /> : <EyeInvisibleOutlined />}
               />
               <Text copyable={{ text: tempPass }} />
+              {status === 'connected' && (
+                <Tooltip title="Type password into VNC">
+                  <Button size="small" icon={<SendOutlined />} onClick={handleSendPassword}>Send</Button>
+                </Tooltip>
+              )}
             </div>
-            <Text type="warning" style={{ fontSize: 12 }}>
-              Temporary account — automatically revoked on disconnect
-            </Text>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text type="warning" style={{ fontSize: 12 }}>
+                Temporary account — automatically revoked on disconnect
+              </Text>
+              {status === 'connected' && (
+                <Tooltip title="Send username + Tab + password + Enter into VNC">
+                  <Button size="small" type="primary" icon={<LoginOutlined />} onClick={handleAutoLogin}>
+                    Auto Login
+                  </Button>
+                </Tooltip>
+              )}
+            </div>
           </Space>
         </Card>
       )}
