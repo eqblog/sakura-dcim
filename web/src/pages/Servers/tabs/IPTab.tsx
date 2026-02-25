@@ -42,11 +42,21 @@ const IPTab: React.FC<IPTabProps> = ({ serverId }) => {
       const { data: resp } = await ipPoolAPI.listAssignable();
       if (resp.success && resp.data) {
         setPools(resp.data);
+        // Use assignable pools as lookup too (they include nested pools)
+        setAllPools(prev => {
+          const map = new Map(prev.map(p => [p.id, p]));
+          resp.data!.forEach(p => map.set(p.id, p));
+          return Array.from(map.values());
+        });
       }
-      // Also fetch all pools for display lookup
+      // Also fetch top-level pools for display lookup
       const { data: allResp } = await ipPoolAPI.list();
       if (allResp.success && allResp.data) {
-        setAllPools(allResp.data);
+        setAllPools(prev => {
+          const map = new Map(prev.map(p => [p.id, p]));
+          allResp.data!.forEach(p => map.set(p.id, p));
+          return Array.from(map.values());
+        });
       }
     } catch { /* ignore */ }
   };

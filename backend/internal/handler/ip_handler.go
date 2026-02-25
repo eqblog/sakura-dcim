@@ -95,9 +95,9 @@ func (h *IPHandler) CreatePool(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: err.Error()})
 		return
 	}
-	// Auto-generate IPs for ip_pool type if requested
-	if pool.PoolType == "ip_pool" && req.ReserveGateway {
-		_ = h.svc.GeneratePoolIPs(c.Request.Context(), result.ID, true)
+	// Auto-generate IPs for ip_pool type
+	if pool.PoolType == "ip_pool" {
+		_ = h.svc.GeneratePoolIPs(c.Request.Context(), result.ID, req.ReserveGateway)
 		result, _ = h.svc.GetPool(c.Request.Context(), result.ID)
 	}
 	c.JSON(http.StatusCreated, domain.APIResponse{Success: true, Data: result})
