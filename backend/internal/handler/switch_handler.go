@@ -47,6 +47,12 @@ func (h *SwitchHandler) RegisterRoutes(r *gin.RouterGroup) {
 		g.POST("/:id/test", h.TestConnection)
 		g.POST("/:id/snmp-poll", h.PollSNMP)
 
+		// Port admin toggle
+		g.POST("/:id/ports/:portId/admin", h.TogglePortAdmin)
+
+		// VLANs
+		g.GET("/:id/vlans", h.GetVLANs)
+
 		// DHCP relay
 		g.POST("/:id/dhcp-relay", h.ConfigureDHCPRelay)
 
@@ -347,6 +353,43 @@ func (h *SwitchHandler) PollSNMP(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: result})
+}
+
+func (h *SwitchHandler) TogglePortAdmin(c *gin.Context) {
+	switchID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: "invalid switch ID"})
+		return
+	}
+	portID, err := uuid.Parse(c.Param("portId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: "invalid port ID"})
+		return
+	}
+	var req domain.PortAdminRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: formatValidationError(err)})
+		return
+	}
+	if err := h.svc.TogglePortAdmin(c.Request.Context(), switchID, portID, req.Status); err != nil {
+		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Message: "port admin status updated"})
+}
+
+func (h *SwitchHandler) GetVLANs(c *gin.Context) {
+	switchID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: "invalid switch ID"})
+		return
+	}
+	vlans, err := h.svc.GetVLANSummary(c.Request.Context(), switchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: vlans})
 }
 
 func (h *SwitchHandler) GetPortStatus(c *gin.Context) {

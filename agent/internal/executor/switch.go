@@ -22,16 +22,30 @@ func NewSwitchExecutor(logger *zap.Logger) *SwitchExecutor {
 }
 
 type SwitchProvisionPayload struct {
-	SwitchIP    string `json:"switch_ip"`
-	SSHUser     string `json:"ssh_user"`
-	SSHPass     string `json:"ssh_pass"`
-	SSHPort     int    `json:"ssh_port"`
-	Vendor      string `json:"vendor"`
-	PortName    string `json:"port_name"`
-	VlanID      int    `json:"vlan_id"`
-	SpeedMbps   int    `json:"speed_mbps"`
-	AdminStatus string `json:"admin_status"`
-	Description string `json:"description"`
+	SwitchIP     string `json:"switch_ip"`
+	SSHUser      string `json:"ssh_user"`
+	SSHPass      string `json:"ssh_pass"`
+	SSHPort      int    `json:"ssh_port"`
+	Vendor       string `json:"vendor"`
+	PortName     string `json:"port_name"`
+	VlanID       int    `json:"vlan_id"`
+	PortMode     string `json:"port_mode"`
+	NativeVlanID int    `json:"native_vlan_id"`
+	TrunkVlans   string `json:"trunk_vlans"`
+	SpeedMbps    int    `json:"speed_mbps"`
+	AdminStatus  string `json:"admin_status"`
+	Description  string `json:"description"`
+}
+
+// SwitchPortAdminPayload contains parameters for toggling port admin status.
+type SwitchPortAdminPayload struct {
+	SwitchIP string `json:"switch_ip"`
+	SSHUser  string `json:"ssh_user"`
+	SSHPass  string `json:"ssh_pass"`
+	SSHPort  int    `json:"ssh_port"`
+	Vendor   string `json:"vendor"`
+	PortName string `json:"port_name"`
+	Status   string `json:"status"` // "up" or "down"
 }
 
 type SwitchStatusPayload struct {
@@ -103,6 +117,83 @@ func (e *SwitchExecutor) HandleSwitchStatus(raw json.RawMessage) (interface{}, e
 	}, nil
 }
 
+// HandleSwitchPortAdmin toggles a switch port admin status (shutdown/no shutdown) via SSH.
+func (e *SwitchExecutor) HandleSwitchPortAdmin(raw json.RawMessage) (interface{}, error) {
+	var p SwitchPortAdminPayload
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return nil, fmt.Errorf("parse payload: %w", err)
+	}
+
+	e.logger.Info("toggling port admin status",
+		zap.String("switch_ip", p.SwitchIP),
+		zap.String("port", p.PortName),
+		zap.String("status", p.Status),
+	)
+
+	commands := generatePortAdminCommands(p.Vendor, p.PortName, p.Status)
+	if len(commands) == 0 {
+		return nil, fmt.Errorf("unsupported vendor: %s", p.Vendor)
+	}
+
+	output, err := e.execSSH(p.SwitchIP, p.SSHPort, p.SSHUser, p.SSHPass, commands)
+	if err != nil {
+		return nil, fmt.Errorf("ssh execution failed: %w", err)
+	}
+
+	return map[string]string{
+		"status": p.Status,
+		"output": output,
+	}, nil
+}
+
+// generatePortAdminCommands creates vendor-specific CLI commands for port admin toggle.
+func generatePortAdminCommands(vendor, portName, status string) []string {
+	shutdown := status == "down"
+	switch normalizeVendor(vendor) {
+	case "cisco_ios":
+		cmds := []string{"configure terminal", fmt.Sprintf("interface %s", portName)}
+		if shutdown {
+			cmds = append(cmds, "shutdown")
+		} else {
+			cmds = append(cmds, "no shutdown")
+		}
+		return append(cmds, "end", "write memory")
+	case "cisco_nxos":
+		cmds := []string{"configure terminal", fmt.Sprintf("interface %s", portName)}
+		if shutdown {
+			cmds = append(cmds, "shutdown")
+		} else {
+			cmds = append(cmds, "no shutdown")
+		}
+		return append(cmds, "end", "copy running-config startup-config")
+	case "junos":
+		if shutdown {
+			return []string{fmt.Sprintf("set interfaces %s disable", portName), "commit and-quit"}
+		}
+		return []string{fmt.Sprintf("delete interfaces %s disable", portName), "commit and-quit"}
+	case "arista_eos":
+		cmds := []string{"configure", fmt.Sprintf("interface %s", portName)}
+		if shutdown {
+			cmds = append(cmds, "shutdown")
+		} else {
+			cmds = append(cmds, "no shutdown")
+		}
+		return append(cmds, "end", "write memory")
+	case "sonic":
+		if shutdown {
+			return []string{fmt.Sprintf("sudo config interface shutdown %s", portName), "sudo config save -y"}
+		}
+		return []string{fmt.Sprintf("sudo config interface startup %s", portName), "sudo config save -y"}
+	case "cumulus":
+		if shutdown {
+			return []string{fmt.Sprintf("net add interface %s link down", portName), "net commit"}
+		}
+		return []string{fmt.Sprintf("net del interface %s link down", portName), "net commit"}
+	default:
+		return nil
+	}
+}
+
 func (e *SwitchExecutor) execSSH(host string, port int, user, pass string, commands []string) (string, error) {
 	if port == 0 {
 		port = 22
@@ -137,6 +228,31 @@ func (e *SwitchExecutor) execSSH(host string, port int, user, pass string, comma
 	return string(out), nil
 }
 
+// generateCiscoPortModeCmds generates switchport mode commands for Cisco IOS/NX-OS/Arista EOS.
+func generateCiscoPortModeCmds(p *SwitchProvisionPayload) []string {
+	var cmds []string
+	switch p.PortMode {
+	case "trunk":
+		cmds = append(cmds, "switchport mode trunk")
+		if p.TrunkVlans != "" {
+			cmds = append(cmds, fmt.Sprintf("switchport trunk allowed vlan %s", p.TrunkVlans))
+		}
+	case "trunk_native":
+		cmds = append(cmds, "switchport mode trunk")
+		if p.NativeVlanID > 0 {
+			cmds = append(cmds, fmt.Sprintf("switchport trunk native vlan %d", p.NativeVlanID))
+		}
+		if p.TrunkVlans != "" {
+			cmds = append(cmds, fmt.Sprintf("switchport trunk allowed vlan %s", p.TrunkVlans))
+		}
+	default: // access
+		if p.VlanID > 0 {
+			cmds = append(cmds, "switchport mode access", fmt.Sprintf("switchport access vlan %d", p.VlanID))
+		}
+	}
+	return cmds
+}
+
 // generateProvisionCommands creates vendor-specific CLI commands for port configuration.
 func generateProvisionCommands(vendor string, p *SwitchProvisionPayload) []string {
 	switch normalizeVendor(vendor) {
@@ -148,9 +264,7 @@ func generateProvisionCommands(vendor string, p *SwitchProvisionPayload) []strin
 		if p.Description != "" {
 			cmds = append(cmds, fmt.Sprintf("description %s", p.Description))
 		}
-		if p.VlanID > 0 {
-			cmds = append(cmds, "switchport mode access", fmt.Sprintf("switchport access vlan %d", p.VlanID))
-		}
+		cmds = append(cmds, generateCiscoPortModeCmds(p)...)
 		if p.AdminStatus == "down" {
 			cmds = append(cmds, "shutdown")
 		} else {
@@ -167,11 +281,9 @@ func generateProvisionCommands(vendor string, p *SwitchProvisionPayload) []strin
 		if p.Description != "" {
 			cmds = append(cmds, fmt.Sprintf("description %s", p.Description))
 		}
-		if p.VlanID > 0 {
-			cmds = append(cmds, "switchport", "switchport mode access", fmt.Sprintf("switchport access vlan %d", p.VlanID))
-		}
+		cmds = append(cmds, "switchport")
+		cmds = append(cmds, generateCiscoPortModeCmds(p)...)
 		if p.SpeedMbps > 0 {
-			// NX-OS uses speed in Mbps directly for 1G/10G/25G/40G/100G
 			cmds = append(cmds, fmt.Sprintf("speed %d", p.SpeedMbps))
 		}
 		if p.AdminStatus == "down" {
@@ -187,8 +299,34 @@ func generateProvisionCommands(vendor string, p *SwitchProvisionPayload) []strin
 		if p.Description != "" {
 			cmds = append(cmds, fmt.Sprintf("set interfaces %s description \"%s\"", p.PortName, p.Description))
 		}
-		if p.VlanID > 0 {
-			cmds = append(cmds, fmt.Sprintf("set interfaces %s unit 0 family ethernet-switching vlan members vlan%d", p.PortName, p.VlanID))
+		switch p.PortMode {
+		case "trunk":
+			cmds = append(cmds, fmt.Sprintf("set interfaces %s unit 0 family ethernet-switching interface-mode trunk", p.PortName))
+			if p.TrunkVlans != "" {
+				for _, v := range strings.Split(p.TrunkVlans, ",") {
+					v = strings.TrimSpace(v)
+					if v != "" {
+						cmds = append(cmds, fmt.Sprintf("set interfaces %s unit 0 family ethernet-switching vlan members vlan%s", p.PortName, v))
+					}
+				}
+			}
+		case "trunk_native":
+			cmds = append(cmds, fmt.Sprintf("set interfaces %s unit 0 family ethernet-switching interface-mode trunk", p.PortName))
+			if p.NativeVlanID > 0 {
+				cmds = append(cmds, fmt.Sprintf("set interfaces %s native-vlan-id %d", p.PortName, p.NativeVlanID))
+			}
+			if p.TrunkVlans != "" {
+				for _, v := range strings.Split(p.TrunkVlans, ",") {
+					v = strings.TrimSpace(v)
+					if v != "" {
+						cmds = append(cmds, fmt.Sprintf("set interfaces %s unit 0 family ethernet-switching vlan members vlan%s", p.PortName, v))
+					}
+				}
+			}
+		default: // access
+			if p.VlanID > 0 {
+				cmds = append(cmds, fmt.Sprintf("set interfaces %s unit 0 family ethernet-switching vlan members vlan%d", p.PortName, p.VlanID))
+			}
 		}
 		if p.AdminStatus == "down" {
 			cmds = append(cmds, fmt.Sprintf("set interfaces %s disable", p.PortName))
@@ -206,9 +344,7 @@ func generateProvisionCommands(vendor string, p *SwitchProvisionPayload) []strin
 		if p.Description != "" {
 			cmds = append(cmds, fmt.Sprintf("description %s", p.Description))
 		}
-		if p.VlanID > 0 {
-			cmds = append(cmds, "switchport mode access", fmt.Sprintf("switchport access vlan %d", p.VlanID))
-		}
+		cmds = append(cmds, generateCiscoPortModeCmds(p)...)
 		if p.AdminStatus == "down" {
 			cmds = append(cmds, "shutdown")
 		} else {
@@ -219,8 +355,20 @@ func generateProvisionCommands(vendor string, p *SwitchProvisionPayload) []strin
 
 	case "sonic":
 		cmds := []string{}
-		if p.VlanID > 0 {
-			cmds = append(cmds, fmt.Sprintf("sudo config vlan member add %d %s", p.VlanID, p.PortName))
+		switch p.PortMode {
+		case "trunk":
+			if p.TrunkVlans != "" {
+				for _, v := range strings.Split(p.TrunkVlans, ",") {
+					v = strings.TrimSpace(v)
+					if v != "" {
+						cmds = append(cmds, fmt.Sprintf("sudo config vlan member add %s %s --untagged", v, p.PortName))
+					}
+				}
+			}
+		default: // access
+			if p.VlanID > 0 {
+				cmds = append(cmds, fmt.Sprintf("sudo config vlan member add %d %s", p.VlanID, p.PortName))
+			}
 		}
 		if p.AdminStatus == "down" {
 			cmds = append(cmds, fmt.Sprintf("sudo config interface shutdown %s", p.PortName))
@@ -235,9 +383,23 @@ func generateProvisionCommands(vendor string, p *SwitchProvisionPayload) []strin
 
 	case "cumulus":
 		cmds := []string{}
-		if p.VlanID > 0 {
-			cmds = append(cmds, fmt.Sprintf("net add bridge bridge ports %s", p.PortName))
-			cmds = append(cmds, fmt.Sprintf("net add interface %s bridge access %d", p.PortName, p.VlanID))
+		cmds = append(cmds, fmt.Sprintf("net add bridge bridge ports %s", p.PortName))
+		switch p.PortMode {
+		case "trunk":
+			if p.TrunkVlans != "" {
+				cmds = append(cmds, fmt.Sprintf("net add interface %s bridge trunk vlans %s", p.PortName, p.TrunkVlans))
+			}
+		case "trunk_native":
+			if p.NativeVlanID > 0 {
+				cmds = append(cmds, fmt.Sprintf("net add interface %s bridge pvid %d", p.PortName, p.NativeVlanID))
+			}
+			if p.TrunkVlans != "" {
+				cmds = append(cmds, fmt.Sprintf("net add interface %s bridge trunk vlans %s", p.PortName, p.TrunkVlans))
+			}
+		default: // access
+			if p.VlanID > 0 {
+				cmds = append(cmds, fmt.Sprintf("net add interface %s bridge access %d", p.PortName, p.VlanID))
+			}
 		}
 		if p.AdminStatus == "down" {
 			cmds = append(cmds, fmt.Sprintf("net add interface %s link down", p.PortName))

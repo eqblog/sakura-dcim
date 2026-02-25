@@ -19,23 +19,27 @@ func NewSwitchPortRepo(db *pgxpool.Pool) *SwitchPortRepo {
 
 func (r *SwitchPortRepo) Create(ctx context.Context, port *domain.SwitchPort) error {
 	port.ID = uuid.New()
-	query := `INSERT INTO switch_ports (id, switch_id, server_id, port_index, port_name, speed_mbps, vlan_id, admin_status, description)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	if port.PortMode == "" {
+		port.PortMode = "access"
+	}
+	query := `INSERT INTO switch_ports (id, switch_id, server_id, port_index, port_name, speed_mbps, vlan_id, port_mode, native_vlan_id, trunk_vlans, admin_status, description)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
 	_, err := r.db.Exec(ctx, query,
 		port.ID, port.SwitchID, port.ServerID, port.PortIndex, port.PortName,
-		port.SpeedMbps, port.VlanID, port.AdminStatus, port.Description)
+		port.SpeedMbps, port.VlanID, port.PortMode, port.NativeVlanID, port.TrunkVlans,
+		port.AdminStatus, port.Description)
 	return err
 }
 
 func (r *SwitchPortRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.SwitchPort, error) {
-	query := `SELECT id, switch_id, server_id, port_index, port_name, speed_mbps, vlan_id, admin_status, oper_status, description, last_polled
+	query := `SELECT id, switch_id, server_id, port_index, port_name, speed_mbps, vlan_id, port_mode, native_vlan_id, trunk_vlans, admin_status, oper_status, description, last_polled
 		FROM switch_ports WHERE id = $1`
 	row := r.db.QueryRow(ctx, query, id)
 	return scanSwitchPort(row)
 }
 
 func (r *SwitchPortRepo) ListBySwitchID(ctx context.Context, switchID uuid.UUID) ([]domain.SwitchPort, error) {
-	query := `SELECT id, switch_id, server_id, port_index, port_name, speed_mbps, vlan_id, admin_status, oper_status, description, last_polled
+	query := `SELECT id, switch_id, server_id, port_index, port_name, speed_mbps, vlan_id, port_mode, native_vlan_id, trunk_vlans, admin_status, oper_status, description, last_polled
 		FROM switch_ports WHERE switch_id = $1 ORDER BY port_index`
 	rows, err := r.db.Query(ctx, query, switchID)
 	if err != nil {
@@ -46,7 +50,7 @@ func (r *SwitchPortRepo) ListBySwitchID(ctx context.Context, switchID uuid.UUID)
 }
 
 func (r *SwitchPortRepo) GetByServerID(ctx context.Context, serverID uuid.UUID) ([]domain.SwitchPort, error) {
-	query := `SELECT id, switch_id, server_id, port_index, port_name, speed_mbps, vlan_id, admin_status, oper_status, description, last_polled
+	query := `SELECT id, switch_id, server_id, port_index, port_name, speed_mbps, vlan_id, port_mode, native_vlan_id, trunk_vlans, admin_status, oper_status, description, last_polled
 		FROM switch_ports WHERE server_id = $1 ORDER BY port_index`
 	rows, err := r.db.Query(ctx, query, serverID)
 	if err != nil {
@@ -58,11 +62,13 @@ func (r *SwitchPortRepo) GetByServerID(ctx context.Context, serverID uuid.UUID) 
 
 func (r *SwitchPortRepo) Update(ctx context.Context, port *domain.SwitchPort) error {
 	query := `UPDATE switch_ports SET server_id=$2, port_index=$3, port_name=$4, speed_mbps=$5,
-		vlan_id=$6, admin_status=$7, oper_status=$8, description=$9, last_polled=$10
+		vlan_id=$6, port_mode=$7, native_vlan_id=$8, trunk_vlans=$9,
+		admin_status=$10, oper_status=$11, description=$12, last_polled=$13
 		WHERE id=$1`
 	_, err := r.db.Exec(ctx, query,
 		port.ID, port.ServerID, port.PortIndex, port.PortName, port.SpeedMbps,
-		port.VlanID, port.AdminStatus, port.OperStatus, port.Description, port.LastPolled)
+		port.VlanID, port.PortMode, port.NativeVlanID, port.TrunkVlans,
+		port.AdminStatus, port.OperStatus, port.Description, port.LastPolled)
 	return err
 }
 
@@ -88,7 +94,8 @@ func (r *SwitchPortRepo) UpsertBySwitchAndIndex(ctx context.Context, port *domai
 func scanSwitchPort(row pgx.Row) (*domain.SwitchPort, error) {
 	var p domain.SwitchPort
 	err := row.Scan(&p.ID, &p.SwitchID, &p.ServerID, &p.PortIndex, &p.PortName,
-		&p.SpeedMbps, &p.VlanID, &p.AdminStatus, &p.OperStatus, &p.Description, &p.LastPolled)
+		&p.SpeedMbps, &p.VlanID, &p.PortMode, &p.NativeVlanID, &p.TrunkVlans,
+		&p.AdminStatus, &p.OperStatus, &p.Description, &p.LastPolled)
 	if err == pgx.ErrNoRows {
 		return nil, err
 	}
@@ -100,7 +107,8 @@ func collectSwitchPorts(rows pgx.Rows) ([]domain.SwitchPort, error) {
 	for rows.Next() {
 		var p domain.SwitchPort
 		if err := rows.Scan(&p.ID, &p.SwitchID, &p.ServerID, &p.PortIndex, &p.PortName,
-			&p.SpeedMbps, &p.VlanID, &p.AdminStatus, &p.OperStatus, &p.Description, &p.LastPolled); err != nil {
+			&p.SpeedMbps, &p.VlanID, &p.PortMode, &p.NativeVlanID, &p.TrunkVlans,
+			&p.AdminStatus, &p.OperStatus, &p.Description, &p.LastPolled); err != nil {
 			return nil, err
 		}
 		ports = append(ports, p)

@@ -66,6 +66,7 @@ func main() {
 		"switch.status":      switchExec.HandleSwitchStatus,
 		"switch.dhcp_relay":  switchExec.HandleSwitchDHCPRelay,
 		"switch.test":        switchExec.HandleTestConnection,
+		"switch.port_admin":  switchExec.HandleSwitchPortAdmin,
 		"snmp.poll":         snmpExec.HandleSNMPPoll,
 	}
 

@@ -29,8 +29,11 @@ type SwitchPort struct {
 	PortIndex   int        `json:"port_index" db:"port_index"`
 	PortName    string     `json:"port_name" db:"port_name"`
 	SpeedMbps   int        `json:"speed_mbps" db:"speed_mbps"`
-	VlanID      int        `json:"vlan_id" db:"vlan_id"`
-	AdminStatus string     `json:"admin_status" db:"admin_status"`
+	VlanID       int        `json:"vlan_id" db:"vlan_id"`
+	PortMode     string     `json:"port_mode" db:"port_mode"`
+	NativeVlanID int        `json:"native_vlan_id" db:"native_vlan_id"`
+	TrunkVlans   string     `json:"trunk_vlans" db:"trunk_vlans"`
+	AdminStatus  string     `json:"admin_status" db:"admin_status"`
 	OperStatus  string     `json:"oper_status" db:"oper_status"`
 	Description string     `json:"description" db:"description"`
 	LastPolled  *time.Time `json:"last_polled,omitempty" db:"last_polled"`
@@ -99,6 +102,29 @@ type DHCPRelayRequest struct {
 	RelayGroup    string `json:"relay_group"`                       // JunOS relay group name
 	Remove        bool   `json:"remove"`                            // true = remove relay config
 }
+
+// PortAdminRequest is the API payload for toggling port admin status.
+type PortAdminRequest struct {
+	Status string `json:"status" binding:"required,oneof=up down"`
+}
+
+// VLANSummary represents an aggregated VLAN entry across switch ports.
+type VLANSummary struct {
+	VlanID    int      `json:"vlan_id"`
+	PortCount int      `json:"port_count"`
+	Ports     []string `json:"ports"`
+}
+
+// PortTrafficSummary holds traffic totals for a single port.
+type PortTrafficSummary struct {
+	TrafficTodayIn  uint64 `json:"traffic_today_in"`
+	TrafficTodayOut uint64 `json:"traffic_today_out"`
+	TrafficMonthIn  uint64 `json:"traffic_month_in"`
+	TrafficMonthOut uint64 `json:"traffic_month_out"`
+}
+
+// SwitchBandwidthMap maps port_id to its traffic summary.
+type SwitchBandwidthMap map[string]PortTrafficSummary
 
 // SensorDataPoint represents a time-series sensor reading stored in InfluxDB
 type SensorDataPoint struct {

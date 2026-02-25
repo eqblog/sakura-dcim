@@ -135,6 +135,53 @@ func (s *BandwidthService) GetServerBandwidth(ctx context.Context, serverID uuid
 	return summaries, nil
 }
 
+// GetSwitchBandwidth returns traffic today/month for all ports of a switch.
+func (s *BandwidthService) GetSwitchBandwidth(ctx context.Context, switchID uuid.UUID) (domain.SwitchBandwidthMap, error) {
+	ports, err := s.portRepo.ListBySwitchID(ctx, switchID)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+
+	result := make(domain.SwitchBandwidthMap)
+	for _, port := range ports {
+		summary := domain.PortTrafficSummary{}
+		portID := port.ID.String()
+
+		if s.influxRepo != nil {
+			if todayData, err := s.influxRepo.QueryBandwidth(ctx, portID, todayStart, now); err == nil {
+				for _, dp := range todayData {
+					summary.TrafficTodayIn += dp.InBytes
+					summary.TrafficTodayOut += dp.OutBytes
+				}
+			}
+			if monthData, err := s.influxRepo.QueryBandwidth(ctx, portID, monthStart, now); err == nil {
+				for _, dp := range monthData {
+					summary.TrafficMonthIn += dp.InBytes
+					summary.TrafficMonthOut += dp.OutBytes
+				}
+			}
+		} else if memData, ok := s.dataStore[portID]; ok {
+			for _, dp := range memData {
+				if dp.Timestamp.After(todayStart) {
+					summary.TrafficTodayIn += dp.InBytes
+					summary.TrafficTodayOut += dp.OutBytes
+				}
+				if dp.Timestamp.After(monthStart) {
+					summary.TrafficMonthIn += dp.InBytes
+					summary.TrafficMonthOut += dp.OutBytes
+				}
+			}
+		}
+
+		result[portID] = summary
+	}
+	return result, nil
+}
+
 // TriggerSNMPPoll sends poll request to the agent for a specific switch.
 func (s *BandwidthService) TriggerSNMPPoll(ctx context.Context, switchID uuid.UUID) error {
 	sw, err := s.switchRepo.GetByID(ctx, switchID)

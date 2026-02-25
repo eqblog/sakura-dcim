@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -167,16 +168,19 @@ func (s *SwitchService) ProvisionPort(ctx context.Context, switchID uuid.UUID, p
 	}
 
 	payload := map[string]any{
-		"switch_ip":   sw.IP,
-		"ssh_user":    sw.SSHUser,
-		"ssh_pass":    sw.SSHPass,
-		"ssh_port":    sw.SSHPort,
-		"vendor":      sw.Vendor,
-		"port_name":   port.PortName,
-		"vlan_id":     port.VlanID,
-		"speed_mbps":  port.SpeedMbps,
-		"admin_status": port.AdminStatus,
-		"description": port.Description,
+		"switch_ip":      sw.IP,
+		"ssh_user":       sw.SSHUser,
+		"ssh_pass":       sw.SSHPass,
+		"ssh_port":       sw.SSHPort,
+		"vendor":         sw.Vendor,
+		"port_name":      port.PortName,
+		"vlan_id":        port.VlanID,
+		"port_mode":      port.PortMode,
+		"native_vlan_id": port.NativeVlanID,
+		"trunk_vlans":    port.TrunkVlans,
+		"speed_mbps":     port.SpeedMbps,
+		"admin_status":   port.AdminStatus,
+		"description":    port.Description,
 	}
 
 	resp, err := s.hub.SendRequest(sw.AgentID, ws.ActionSwitchProvision, payload, 30*time.Second)
@@ -384,6 +388,99 @@ func (s *SwitchService) syncAllSwitchPorts(ctx context.Context) {
 			)
 		}
 	}
+}
+
+// TogglePortAdmin sends a port admin up/down command to a switch via the agent and updates DB.
+func (s *SwitchService) TogglePortAdmin(ctx context.Context, switchID, portID uuid.UUID, status string) error {
+	sw, err := s.switchRepo.GetByID(ctx, switchID)
+	if err != nil {
+		return fmt.Errorf("switch not found: %w", err)
+	}
+	port, err := s.portRepo.GetByID(ctx, portID)
+	if err != nil {
+		return fmt.Errorf("port not found: %w", err)
+	}
+
+	payload := map[string]any{
+		"switch_ip": sw.IP,
+		"ssh_user":  sw.SSHUser,
+		"ssh_pass":  sw.SSHPass,
+		"ssh_port":  sw.SSHPort,
+		"vendor":    sw.Vendor,
+		"port_name": port.PortName,
+		"status":    status,
+	}
+
+	resp, err := s.hub.SendRequest(sw.AgentID, ws.ActionSwitchPortAdmin, payload, 30*time.Second)
+	if err != nil {
+		return fmt.Errorf("agent request failed: %w", err)
+	}
+	if resp.Error != "" {
+		return fmt.Errorf("agent error: %s", resp.Error)
+	}
+
+	port.AdminStatus = status
+	return s.portRepo.Update(ctx, port)
+}
+
+// GetVLANSummary aggregates VLAN usage across all ports of a switch.
+func (s *SwitchService) GetVLANSummary(ctx context.Context, switchID uuid.UUID) ([]domain.VLANSummary, error) {
+	ports, err := s.portRepo.ListBySwitchID(ctx, switchID)
+	if err != nil {
+		return nil, err
+	}
+
+	vlanMap := make(map[int][]string)
+
+	for _, p := range ports {
+		switch p.PortMode {
+		case "trunk":
+			if p.TrunkVlans != "" {
+				for _, v := range splitVlans(p.TrunkVlans) {
+					vlanMap[v] = append(vlanMap[v], p.PortName)
+				}
+			}
+		case "trunk_native":
+			if p.NativeVlanID > 0 {
+				vlanMap[p.NativeVlanID] = append(vlanMap[p.NativeVlanID], p.PortName+" (native)")
+			}
+			if p.TrunkVlans != "" {
+				for _, v := range splitVlans(p.TrunkVlans) {
+					vlanMap[v] = append(vlanMap[v], p.PortName)
+				}
+			}
+		default: // access
+			if p.VlanID > 0 {
+				vlanMap[p.VlanID] = append(vlanMap[p.VlanID], p.PortName)
+			}
+		}
+	}
+
+	var result []domain.VLANSummary
+	for vid, portNames := range vlanMap {
+		result = append(result, domain.VLANSummary{
+			VlanID:    vid,
+			PortCount: len(portNames),
+			Ports:     portNames,
+		})
+	}
+	return result, nil
+}
+
+func splitVlans(s string) []int {
+	var result []int
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		v := 0
+		fmt.Sscanf(part, "%d", &v)
+		if v > 0 {
+			result = append(result, v)
+		}
+	}
+	return result
 }
 
 // ConfigureDHCPRelay sends a DHCP relay configuration command to a switch via the agent.

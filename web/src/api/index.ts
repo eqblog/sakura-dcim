@@ -18,6 +18,8 @@ import type {
   Switch,
   SwitchPort,
   BandwidthSummary,
+  VLANSummary,
+  SwitchBandwidthMap,
   AuditLog,
   IPPool,
   IPAddress,
@@ -222,6 +224,12 @@ export const switchAPI = {
     client.post<APIResponse>(`/switches/${switchId}/test`),
   pollSNMP: (switchId: string) =>
     client.post<APIResponse>(`/switches/${switchId}/snmp-poll`),
+  // Port admin toggle
+  togglePortAdmin: (switchId: string, portId: string, status: string) =>
+    client.post<APIResponse>(`/switches/${switchId}/ports/${portId}/admin`, { status }),
+  // VLANs
+  getVLANs: (switchId: string) =>
+    client.get<APIResponse<VLANSummary[]>>(`/switches/${switchId}/vlans`),
   // Command templates
   getCommandTemplates: (vendor?: string) =>
     client.get<APIResponse>(`/switches/templates`, { params: vendor ? { vendor } : undefined }),
@@ -231,6 +239,8 @@ export const switchAPI = {
 export const bandwidthAPI = {
   getServerBandwidth: (serverId: string, period?: string) =>
     client.get<APIResponse<BandwidthSummary[]>>(`/servers/${serverId}/bandwidth`, { params: { period } }),
+  getSwitchBandwidth: (switchId: string) =>
+    client.get<APIResponse<SwitchBandwidthMap>>(`/switches/${switchId}/bandwidth`),
 };
 
 // IP Pools & Addresses

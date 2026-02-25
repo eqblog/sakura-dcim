@@ -87,6 +87,7 @@ const (
 	ActionSwitchStatus     = "switch.status"
 	ActionSwitchDHCPRelay  = "switch.dhcp_relay"
 	ActionSwitchTest       = "switch.test"
+	ActionSwitchPortAdmin  = "switch.port_admin"
 
 	// SNMP
 	ActionSNMPPoll = "snmp.poll"

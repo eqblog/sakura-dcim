@@ -221,11 +221,29 @@ export interface SwitchPort {
   port_name: string;
   speed_mbps: number;
   vlan_id: number;
+  port_mode: string;
+  native_vlan_id: number;
+  trunk_vlans: string;
   admin_status: string;
   oper_status: string;
   description: string;
   last_polled?: string;
 }
+
+export interface VLANSummary {
+  vlan_id: number;
+  port_count: number;
+  ports: string[];
+}
+
+export interface PortTrafficSummary {
+  traffic_today_in: number;
+  traffic_today_out: number;
+  traffic_month_in: number;
+  traffic_month_out: number;
+}
+
+export type SwitchBandwidthMap = Record<string, PortTrafficSummary>;
 
 export interface BandwidthSummary {
   port_id: string;
