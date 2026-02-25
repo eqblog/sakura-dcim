@@ -133,6 +133,11 @@ func main() {
 	// Register discovery result event handler
 	hub.OnEvent(ws.ActionDiscoveryResult, discoveryService.HandleDiscoveryResultEvent)
 
+	// Start periodic SNMP port sync (every 5 minutes)
+	snmpCtx, snmpCancel := context.WithCancel(context.Background())
+	defer snmpCancel()
+	go switchService.StartPeriodicSNMPSync(snmpCtx, 5*time.Minute)
+
 	// Gin
 	gin.SetMode(cfg.Server.Mode)
 	r := gin.New()

@@ -71,6 +71,20 @@ func (r *SwitchPortRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+func (r *SwitchPortRepo) UpsertBySwitchAndIndex(ctx context.Context, port *domain.SwitchPort) error {
+	query := `INSERT INTO switch_ports (id, switch_id, port_index, port_name, speed_mbps, admin_status, oper_status, last_polled)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (switch_id, port_index) DO UPDATE SET
+			port_name = EXCLUDED.port_name,
+			speed_mbps = EXCLUDED.speed_mbps,
+			oper_status = EXCLUDED.oper_status,
+			last_polled = EXCLUDED.last_polled`
+	_, err := r.db.Exec(ctx, query,
+		port.ID, port.SwitchID, port.PortIndex, port.PortName,
+		port.SpeedMbps, port.AdminStatus, port.OperStatus, port.LastPolled)
+	return err
+}
+
 func scanSwitchPort(row pgx.Row) (*domain.SwitchPort, error) {
 	var p domain.SwitchPort
 	err := row.Scan(&p.ID, &p.SwitchID, &p.ServerID, &p.PortIndex, &p.PortName,

@@ -134,6 +134,7 @@ type SwitchPortRepository interface {
 	GetByServerID(ctx context.Context, serverID uuid.UUID) ([]domain.SwitchPort, error)
 	Update(ctx context.Context, port *domain.SwitchPort) error
 	Delete(ctx context.Context, id uuid.UUID) error
+	UpsertBySwitchAndIndex(ctx context.Context, port *domain.SwitchPort) error
 }
 
 type DiscoverySessionRepository interface {

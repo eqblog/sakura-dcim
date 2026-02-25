@@ -130,8 +130,14 @@ const SwitchesPage: React.FC = () => {
         else { message.error(resp.error); return; }
       } else {
         const { data: resp } = await switchAPI.create(values);
-        if (resp.success) message.success('Switch created');
-        else { message.error(resp.error); return; }
+        if (resp.success) {
+          message.success('Switch created');
+          // Auto-sync ports from SNMP for the new switch
+          const newSwitch = resp.data as Switch;
+          if (newSwitch?.id) {
+            switchAPI.syncPorts(newSwitch.id).catch(() => { /* best effort */ });
+          }
+        } else { message.error(resp.error); return; }
       }
       setModalOpen(false);
       fetchSwitches();
@@ -150,8 +156,36 @@ const SwitchesPage: React.FC = () => {
     setPortsLoading(true);
     try {
       const { data: resp } = await switchAPI.listPorts(sw.id);
-      if (resp.success) setPorts(resp.data || []);
+      if (resp.success) {
+        const portData = resp.data || [];
+        setPorts(portData);
+        // Auto-sync from SNMP if no ports in DB yet
+        if (portData.length === 0) {
+          syncPorts(sw);
+          return;
+        }
+      }
     } catch { /* */ }
+    setPortsLoading(false);
+  };
+
+  const syncPorts = async (sw: Switch) => {
+    setSelectedSwitch(sw);
+    setPortsLoading(true);
+    try {
+      const { data: resp } = await switchAPI.syncPorts(sw.id);
+      if (resp.success) {
+        setPorts(resp.data || []);
+        message.success('Ports synced from SNMP');
+      } else {
+        message.error(resp.error || 'SNMP sync failed');
+        // Fall back to loading from DB
+        const { data: fallback } = await switchAPI.listPorts(sw.id);
+        if (fallback.success) setPorts(fallback.data || []);
+      }
+    } catch {
+      message.error('SNMP sync failed');
+    }
     setPortsLoading(false);
   };
 
@@ -269,7 +303,7 @@ const SwitchesPage: React.FC = () => {
         <Card title={`Ports — ${selectedSwitch.name} (${selectedSwitch.ip})`} style={{ marginTop: 16 }}
           extra={
             <Space>
-              <Button icon={<ReloadOutlined />} onClick={() => fetchPorts(selectedSwitch)}>Refresh</Button>
+              <Button icon={<ReloadOutlined />} loading={portsLoading} onClick={() => syncPorts(selectedSwitch)}>Refresh</Button>
               <Button type="primary" icon={<PlusOutlined />} onClick={openCreatePort}>Add Port</Button>
             </Space>
           }>

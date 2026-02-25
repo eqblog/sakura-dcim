@@ -40,6 +40,9 @@ func (h *SwitchHandler) RegisterRoutes(r *gin.RouterGroup) {
 		g.POST("/:id/ports/:portId/provision", h.ProvisionPort)
 		g.GET("/:id/ports/:portId/status", h.GetPortStatus)
 
+		// Sync ports from SNMP
+		g.POST("/:id/sync-ports", h.SyncPorts)
+
 		// Test & poll
 		g.POST("/:id/test", h.TestConnection)
 		g.POST("/:id/snmp-poll", h.PollSNMP)
@@ -316,6 +319,20 @@ func (h *SwitchHandler) TestConnection(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: result})
+}
+
+func (h *SwitchHandler) SyncPorts(c *gin.Context) {
+	switchID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, domain.APIResponse{Success: false, Error: "invalid switch ID"})
+		return
+	}
+	ports, err := h.svc.SyncPortsFromSNMP(c.Request.Context(), switchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, domain.APIResponse{Success: true, Data: ports})
 }
 
 func (h *SwitchHandler) PollSNMP(c *gin.Context) {

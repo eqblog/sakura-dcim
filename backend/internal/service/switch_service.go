@@ -284,6 +284,99 @@ func (s *SwitchService) PollSNMP(ctx context.Context, switchID uuid.UUID) (map[s
 	return result, nil
 }
 
+// SyncPortsFromSNMP polls SNMP for port data and upserts into the database.
+func (s *SwitchService) SyncPortsFromSNMP(ctx context.Context, switchID uuid.UUID) ([]domain.SwitchPort, error) {
+	sw, err := s.switchRepo.GetByID(ctx, switchID)
+	if err != nil {
+		return nil, fmt.Errorf("switch not found: %w", err)
+	}
+
+	payload := map[string]any{
+		"switch_ip":      sw.IP,
+		"snmp_community": sw.SNMPCommunity,
+		"snmp_version":   sw.SNMPVersion,
+	}
+
+	resp, err := s.hub.SendRequest(sw.AgentID, ws.ActionSNMPPoll, payload, 30*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("agent request failed: %w", err)
+	}
+	if resp.Error != "" {
+		return nil, fmt.Errorf("agent error: %s", resp.Error)
+	}
+
+	// Parse response payload
+	raw, _ := json.Marshal(resp.Payload)
+	var pollResult struct {
+		Ports []struct {
+			PortIndex  int    `json:"port_index"`
+			PortName   string `json:"port_name"`
+			Speed      uint64 `json:"speed"`
+			OperStatus string `json:"oper_status"`
+		} `json:"ports"`
+	}
+	if err := json.Unmarshal(raw, &pollResult); err != nil {
+		return nil, fmt.Errorf("parse SNMP response: %w", err)
+	}
+
+	now := time.Now()
+	for _, p := range pollResult.Ports {
+		speedMbps := int(p.Speed / 1_000_000) // SNMP returns bits/sec
+		port := &domain.SwitchPort{
+			ID:          uuid.New(),
+			SwitchID:    switchID,
+			PortIndex:   p.PortIndex,
+			PortName:    p.PortName,
+			SpeedMbps:   speedMbps,
+			AdminStatus: "up",
+			OperStatus:  p.OperStatus,
+			LastPolled:  &now,
+		}
+		if err := s.portRepo.UpsertBySwitchAndIndex(ctx, port); err != nil {
+			s.logger.Warn("failed to upsert port from SNMP",
+				zap.Int("port_index", p.PortIndex),
+				zap.Error(err),
+			)
+		}
+	}
+
+	return s.portRepo.ListBySwitchID(ctx, switchID)
+}
+
+// StartPeriodicSNMPSync runs SNMP port polling for all switches at the given interval.
+func (s *SwitchService) StartPeriodicSNMPSync(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	s.logger.Info("starting periodic SNMP port sync", zap.Duration("interval", interval))
+	for {
+		select {
+		case <-ctx.Done():
+			s.logger.Info("stopping periodic SNMP port sync")
+			return
+		case <-ticker.C:
+			s.syncAllSwitchPorts(ctx)
+		}
+	}
+}
+
+func (s *SwitchService) syncAllSwitchPorts(ctx context.Context) {
+	switches, err := s.switchRepo.List(ctx)
+	if err != nil {
+		s.logger.Error("periodic SNMP sync: failed to list switches", zap.Error(err))
+		return
+	}
+	for _, sw := range switches {
+		if _, err := s.SyncPortsFromSNMP(ctx, sw.ID); err != nil {
+			s.logger.Debug("periodic SNMP sync failed for switch",
+				zap.String("switch", sw.Name),
+				zap.String("ip", sw.IP),
+				zap.Error(err),
+			)
+		}
+	}
+}
+
 // ConfigureDHCPRelay sends a DHCP relay configuration command to a switch via the agent.
 func (s *SwitchService) ConfigureDHCPRelay(ctx context.Context, switchID uuid.UUID, req *domain.DHCPRelayRequest) error {
 	sw, err := s.switchRepo.GetByID(ctx, switchID)

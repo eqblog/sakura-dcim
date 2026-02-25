@@ -214,6 +214,9 @@ export const switchAPI = {
     client.put<APIResponse>(`/switches/ports/${portId}/link`, { server_id: serverId }),
   unlinkPort: (portId: string) =>
     client.put<APIResponse>(`/switches/ports/${portId}/unlink`),
+  // Sync ports from SNMP
+  syncPorts: (switchId: string) =>
+    client.post<APIResponse<SwitchPort[]>>(`/switches/${switchId}/sync-ports`),
   // Test & poll
   testConnection: (switchId: string) =>
     client.post<APIResponse>(`/switches/${switchId}/test`),
