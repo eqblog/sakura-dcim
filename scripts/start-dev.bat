@@ -5,6 +5,10 @@ REM
 REM The agent runs inside a Docker container with access to ipmitool,
 REM dmidecode, and all other Linux tools needed for IPMI/KVM/PXE.
 REM
+REM IMPORTANT: On Windows, the agent MUST run in Docker because ipmitool
+REM and dmidecode are Linux-only tools. Never run the agent natively on
+REM Windows — it will fail with "ipmitool not found in %PATH%".
+REM
 REM Usage:
 REM   scripts\start-dev.bat
 REM   set BACKEND_PORT=9090&& scripts\start-dev.bat
@@ -17,6 +21,18 @@ if "%BACKEND_PORT%"=="" set BACKEND_PORT=8080
 echo =========================================
 echo   Sakura DCIM — Starting Development
 echo =========================================
+
+REM ─── 0. Kill old native agent processes ───
+echo.
+echo [0/8] Cleaning up old processes...
+REM Kill any native Go agent running on Windows (causes ipmitool %PATH% error)
+taskkill /f /fi "WINDOWTITLE eq Sakura Agent*" >nul 2>&1
+REM Kill any go run agent processes
+for /f "tokens=2" %%p in ('tasklist /fi "IMAGENAME eq sakura-agent.exe" /fo list 2^>nul ^| findstr PID') do taskkill /f /pid %%p >nul 2>&1
+REM Kill orphaned go-compiled agent temp binaries
+for /f "tokens=2" %%p in ('wmic process where "CommandLine like '%%cmd/agent%%'" get ProcessId 2^>nul ^| findstr /r "[0-9]"') do taskkill /f /pid %%p >nul 2>&1
+REM Remove old Docker agent container
+docker rm -f sakura-dev-agent >nul 2>&1
 
 REM ─── 1. Start infrastructure ───
 echo.
@@ -71,11 +87,11 @@ if errorlevel 1 (
 )
 
 REM ─── 7. Setup agent in Docker ───
-echo [7/8] Setting up local dev agent...
-docker rm -f sakura-dev-agent >nul 2>&1
+echo [7/8] Setting up local dev agent (Docker)...
 
 REM Use PowerShell to handle JSON API calls and create agent
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$ErrorActionPreference='Stop'; " ^
   "$bp='%BACKEND_PORT%'; $root='%ROOT%'; $cfg=Join-Path $root 'agent\.dev-config.yaml'; " ^
   "if (Test-Path $cfg) { " ^
   "  $lines = Get-Content $cfg; " ^
@@ -99,12 +115,33 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "  } catch { Write-Host \"         WARNING: Agent setup failed: $_\" } " ^
   "} " ^
   "if ($aid -and $tok) { " ^
-  "  Write-Host '         Building agent image...'; " ^
-  "  docker build -t sakura-dcim/agent:dev -f \"$root\docker\agent.Dockerfile\" \"$root\agent\" 2>$null | Out-Null; " ^
+  "  Write-Host '         Building agent Docker image...'; " ^
+  "  $buildOutput = docker build -t sakura-dcim/agent:dev -f \"$root\docker\agent.Dockerfile\" \"$root\agent\" 2>&1; " ^
+  "  if ($LASTEXITCODE -ne 0) { " ^
+  "    Write-Host '         ERROR: Docker build failed:'; " ^
+  "    $buildOutput | Select-Object -Last 10 | ForEach-Object { Write-Host \"           $_\" }; " ^
+  "    Write-Host '         Agent will NOT start. Fix Dockerfile and retry.'; " ^
+  "    exit 1; " ^
+  "  } " ^
   "  Write-Host '         Starting agent container...'; " ^
   "  docker run -d --name sakura-dev-agent -e SAKURA_AGENT_SERVER_URL=\"ws://host.docker.internal:$bp/api/v1/agents/ws\" -e SAKURA_AGENT_ID=$aid -e SAKURA_AGENT_TOKEN=$tok -e AGENT_HOST_GATEWAY=host.docker.internal -v /var/run/docker.sock:/var/run/docker.sock --restart unless-stopped sakura-dcim/agent:dev 2>$null | Out-Null; " ^
-  "  Write-Host '         Agent running in Docker (sakura-dev-agent)'; " ^
+  "  if ($LASTEXITCODE -eq 0) { " ^
+  "    Write-Host '         Agent running in Docker (sakura-dev-agent)'; " ^
+  "    Write-Host '         ipmitool, dmidecode, dnsmasq available inside container'; " ^
+  "  } else { " ^
+  "    Write-Host '         ERROR: Failed to start agent container'; " ^
+  "  } " ^
   "}"
+
+REM Verify agent container is running
+docker ps --filter "name=sakura-dev-agent" --format "{{.Status}}" 2>nul | findstr /c:"Up" >nul 2>&1
+if errorlevel 1 (
+    echo.
+    echo   WARNING: Agent container is NOT running!
+    echo   Run: docker logs sakura-dev-agent   to see errors
+    echo   The agent must run in Docker on Windows for ipmitool to work.
+    echo.
+)
 
 REM ─── 8. Start frontend ───
 echo [8/8] Starting frontend...
@@ -121,6 +158,10 @@ echo.
 echo   Agent logs : docker logs -f sakura-dev-agent
 echo   Stop agent : docker rm -f sakura-dev-agent
 echo   Stop all   : docker compose down
+echo.
+echo   NOTE: On Windows, the agent runs inside Docker.
+echo         ipmitool/dmidecode are Linux tools and do NOT
+echo         work on Windows natively.
 echo =========================================
 echo.
 
