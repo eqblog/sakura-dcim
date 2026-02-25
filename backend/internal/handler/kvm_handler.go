@@ -25,6 +25,7 @@ type kvmRelay struct {
 	mu        sync.Mutex
 	agentConn *ws.Conn
 	waitAgent chan struct{}
+	done      chan struct{} // closed when relay session ends
 }
 
 type KVMHandler struct {
@@ -86,6 +87,7 @@ func (h *KVMHandler) StartKVM(c *gin.Context) {
 	h.relayMu.Lock()
 	h.relays[session.SessionID] = &kvmRelay{
 		waitAgent: make(chan struct{}),
+		done:      make(chan struct{}),
 	}
 	h.relayMu.Unlock()
 
@@ -161,7 +163,7 @@ func (h *KVMHandler) HandleAgentRelay(c *gin.Context) {
 	h.relayMu.Lock()
 	relay, exists := h.relays[sessionID]
 	if !exists {
-		relay = &kvmRelay{waitAgent: make(chan struct{})}
+		relay = &kvmRelay{waitAgent: make(chan struct{}), done: make(chan struct{})}
 		h.relays[sessionID] = relay
 	}
 	h.relayMu.Unlock()
@@ -179,12 +181,15 @@ func (h *KVMHandler) HandleAgentRelay(c *gin.Context) {
 
 	h.logger.Info("agent relay connected", zap.String("session_id", sessionID))
 
-	// Keep connection alive until closed
-	for {
-		if _, _, err := conn.NextReader(); err != nil {
-			break
-		}
+	// Block until the relay session ends.
+	// Do NOT read from conn here — HandleBrowserWS is the sole reader
+	// of agentConn (gorilla/websocket allows only one concurrent reader).
+	select {
+	case <-relay.done:
+	case <-c.Request.Context().Done():
 	}
+
+	h.logger.Info("agent relay disconnected", zap.String("session_id", sessionID))
 }
 
 // HandleBrowserWS accepts the browser's noVNC WebSocket connection
@@ -298,7 +303,15 @@ func (h *KVMHandler) cleanupRelay(sessionID string) {
 	}
 	h.relayMu.Unlock()
 
-	if ok && relay.agentConn != nil {
-		relay.agentConn.Close()
+	if ok {
+		// Signal HandleAgentRelay to unblock and exit
+		select {
+		case <-relay.done:
+		default:
+			close(relay.done)
+		}
+		if relay.agentConn != nil {
+			relay.agentConn.Close()
+		}
 	}
 }
