@@ -32,6 +32,10 @@ func scanIPPool(scan func(dest ...any) error) (*domain.IPPool, error) {
 		&p.VlanMode, &p.NativeVlanID, &p.TrunkVlans, &p.VlanAllocation,
 		&p.ParentID, &p.PoolType,
 		&p.TotalIPs, &p.UsedIPs, &p.ChildCount)
+	// Normalize legacy empty pool_type to "ip_pool"
+	if p.PoolType == "" {
+		p.PoolType = "ip_pool"
+	}
 	return p, err
 }
 
@@ -142,7 +146,7 @@ func (r *IPPoolRepo) ExistsByNetwork(ctx context.Context, network string, parent
 func (r *IPPoolRepo) ListAllAssignable(ctx context.Context) ([]domain.IPPool, error) {
 	rows, err := r.db.Query(ctx,
 		`SELECT `+ipPoolSelectFields+` FROM ip_pools p
-		 WHERE p.pool_type = 'ip_pool'
+		 WHERE (p.pool_type = 'ip_pool' OR p.pool_type = '')
 		   AND (SELECT COUNT(*) FROM ip_addresses WHERE pool_id = p.id AND status = 'available') > 0
 		 ORDER BY p.network`)
 	if err != nil {
