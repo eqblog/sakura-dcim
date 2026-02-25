@@ -156,7 +156,7 @@ const APIDocsPage: React.FC = () => {
 
       <Card>
         <Paragraph>
-          Base URL: <Text code>http://localhost:8080/api/v1</Text>
+          Base URL: <Text code>{window.location.origin}/api/v1</Text>
         </Paragraph>
         <Paragraph>
           Authentication: Bearer token in <Text code>Authorization</Text> header. Obtain via <Text code>POST /auth/login</Text>.

@@ -1,6 +1,7 @@
 #!/bin/bash
 # Sakura DCIM — One-click development start
-# Automatically installs all dependencies on a fresh server
+# Automatically installs all dependencies on a fresh server,
+# creates a local dev agent, and starts everything.
 #
 # Usage:
 #   bash scripts/start-dev.sh                          # defaults: 0.0.0.0:5173
@@ -13,6 +14,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FRONTEND_HOST="${FRONTEND_HOST:-0.0.0.0}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
 BACKEND_PORT="${BACKEND_PORT:-8080}"
+export BACKEND_PORT  # passed to vite.config.ts for proxy target
 
 echo "========================================="
 echo "  Sakura DCIM — Starting Development"
@@ -36,7 +38,7 @@ install_pkg() {
 
 # ─── 0. Install dependencies if missing ───
 echo ""
-echo "[0/5] Checking & installing dependencies..."
+echo "[0/7] Checking & installing dependencies..."
 
 # curl
 if ! command -v curl &>/dev/null; then
@@ -133,10 +135,10 @@ echo "  OK"
 echo ""
 
 # ─── 1. Start infrastructure ───
-echo "[1/5] Starting PostgreSQL, Redis, InfluxDB..."
+echo "[1/7] Starting PostgreSQL, Redis, InfluxDB..."
 cd "$ROOT" && docker compose up -d postgres redis influxdb
 
-echo "[2/5] Waiting for PostgreSQL to be ready..."
+echo "[2/7] Waiting for PostgreSQL to be ready..."
 for i in $(seq 1 30); do
   if docker exec sakura-postgres pg_isready -U sakura -d sakura_dcim -q 2>/dev/null; then
     echo "  PostgreSQL ready."
@@ -150,41 +152,111 @@ for i in $(seq 1 30); do
 done
 
 # ─── 2. Run migrations ───
-echo "[3/5] Running database migrations..."
+echo "[3/7] Running database migrations..."
 cd "$ROOT/backend" && go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest \
   -path migrations -database "postgres://sakura:sakura@localhost:5432/sakura_dcim?sslmode=disable" up 2>&1 || true
 
 # ─── 3. Install frontend dependencies if needed ───
 if [ ! -d "$ROOT/web/node_modules" ]; then
-  echo "[4/5] Installing frontend dependencies..."
+  echo "[4/7] Installing frontend dependencies..."
   cd "$ROOT/web" && npm install
 else
-  echo "[4/5] Frontend dependencies already installed."
+  echo "[4/7] Frontend dependencies already installed."
 fi
 
-# ─── 4. Start backend and frontend ───
-echo "[5/5] Starting backend and frontend..."
+# ─── 4. Start backend ───
+echo "[5/7] Starting backend on port ${BACKEND_PORT}..."
+cd "$ROOT/backend" && go run ./cmd/server &
+BACKEND_PID=$!
+
+# Wait for backend to be healthy
+echo "  Waiting for backend..."
+for i in $(seq 1 30); do
+  if curl -s "http://127.0.0.1:${BACKEND_PORT}/health" >/dev/null 2>&1; then
+    echo "  Backend ready."
+    break
+  fi
+  if [ "$i" -eq 30 ]; then
+    echo "  WARNING: Backend did not become ready in 30s, continuing..."
+  fi
+  sleep 1
+done
+
+# ─── 5. Auto-create local dev agent ───
+echo "[6/7] Setting up local dev agent..."
+AGENT_CONFIG="$ROOT/agent/.dev-config.yaml"
+AGENT_PID=""
+
+if [ ! -f "$AGENT_CONFIG" ]; then
+  # Login as admin to get JWT
+  LOGIN_RESP=$(curl -s -X POST "http://127.0.0.1:${BACKEND_PORT}/api/v1/auth/login" \
+    -H 'Content-Type: application/json' \
+    -d '{"email":"admin@sakura-dcim.local","password":"admin123"}')
+  ACCESS_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"access_token":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+  if [ -n "$ACCESS_TOKEN" ]; then
+    # Create agent via API
+    AGENT_RESP=$(curl -s -X POST "http://127.0.0.1:${BACKEND_PORT}/api/v1/agents" \
+      -H 'Content-Type: application/json' \
+      -H "Authorization: Bearer $ACCESS_TOKEN" \
+      -d '{"name":"Local Dev Agent","location":"localhost","capabilities":["ipmi","kvm","pxe","inventory","discovery"]}')
+
+    AGENT_ID=$(echo "$AGENT_RESP" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    AGENT_TOKEN=$(echo "$AGENT_RESP" | grep -o '"token":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+    if [ -n "$AGENT_ID" ] && [ -n "$AGENT_TOKEN" ]; then
+      cat > "$AGENT_CONFIG" <<AGENTEOF
+server_url: ws://127.0.0.1:${BACKEND_PORT}/api/v1/agents/ws
+agent_id: ${AGENT_ID}
+token: ${AGENT_TOKEN}
+AGENTEOF
+      echo "  Agent created: $AGENT_ID"
+      echo "  Config saved: $AGENT_CONFIG"
+    else
+      echo "  WARNING: Failed to create agent. Response: $AGENT_RESP"
+    fi
+  else
+    echo "  WARNING: Failed to login as admin. Response: $LOGIN_RESP"
+  fi
+else
+  echo "  Using existing agent config: $AGENT_CONFIG"
+fi
+
+# Start agent if config exists
+if [ -f "$AGENT_CONFIG" ]; then
+  echo "  Starting local agent..."
+  cd "$ROOT/agent" && go run ./cmd/agent -config "$AGENT_CONFIG" &
+  AGENT_PID=$!
+fi
+
+# ─── 6. Start frontend ───
+echo "[7/7] Starting frontend..."
+
+# Detect host IP for display
+HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+HOST_IP="${HOST_IP:-localhost}"
+
 echo ""
-echo "  Backend  → http://${FRONTEND_HOST}:${BACKEND_PORT}"
-echo "  Frontend → http://${FRONTEND_HOST}:${FRONTEND_PORT}"
+echo "========================================="
+echo "  Sakura DCIM is running!"
+echo ""
+echo "  Frontend → http://${HOST_IP}:${FRONTEND_PORT}"
+echo "  Backend  → http://${HOST_IP}:${BACKEND_PORT}"
+echo "  API proxy: frontend /api/* → backend :${BACKEND_PORT}"
 echo ""
 echo "  Login: admin@sakura-dcim.local / admin123"
 echo "========================================="
 echo ""
 
-# Run backend and frontend in parallel
-cd "$ROOT/backend" && go run ./cmd/server &
-BACKEND_PID=$!
-
 cd "$ROOT/web" && npx vite --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" &
 FRONTEND_PID=$!
 
-# Handle Ctrl+C — kill both processes
+# Handle Ctrl+C — kill all processes
 cleanup() {
   echo ""
   echo "Shutting down..."
-  kill $BACKEND_PID $FRONTEND_PID 2>/dev/null
-  wait $BACKEND_PID $FRONTEND_PID 2>/dev/null
+  kill $BACKEND_PID $FRONTEND_PID $AGENT_PID 2>/dev/null
+  wait $BACKEND_PID $FRONTEND_PID $AGENT_PID 2>/dev/null
   exit 0
 }
 trap cleanup SIGINT SIGTERM

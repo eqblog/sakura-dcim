@@ -36,3 +36,6 @@ docker/data/
 
 # Logs
 *.log
+
+# Dev agent config (contains token)
+agent/.dev-config.yaml
