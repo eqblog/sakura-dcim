@@ -4,7 +4,9 @@ Data Center Infrastructure Management — manage dedicated servers across multip
 
 ## Prerequisites
 
-- [Go 1.25+](https://go.dev/dl/)
+On a fresh Linux server, the startup scripts auto-install everything. For local dev on macOS/Windows you need:
+
+- [Go 1.22+](https://go.dev/dl/)
 - [Node.js 20+](https://nodejs.org/)
 - [Docker & Docker Compose](https://docs.docker.com/get-docker/)
 
@@ -21,10 +23,36 @@ cd sakura-dcim
 |---------------|---------|
 | `make start` | `scripts\start-dev.bat` |
 
-Automatically: start DB + Redis + InfluxDB → migrate → install npm → start backend & frontend.
+The dev script (`scripts/start-dev.sh`) does everything automatically:
 
-- Backend: http://localhost:8080
+1. Installs missing dependencies (Docker, Go, Node.js, ipmitool, dmidecode, dnsmasq, etc.)
+2. Starts PostgreSQL, Redis, InfluxDB via Docker Compose
+3. Runs database migrations
+4. Installs frontend npm packages
+5. Starts backend API server
+6. Builds KVM browser Docker image
+7. Creates and starts a local dev agent (auto-registers via API)
+8. Starts frontend dev server with API proxy
+
+```bash
+# Default: frontend 0.0.0.0:5173, backend :8080
+bash scripts/start-dev.sh
+
+# Custom ports (e.g. for public access):
+FRONTEND_PORT=3000 BACKEND_PORT=9090 bash scripts/start-dev.sh
+
+# Custom frontend bind address:
+FRONTEND_HOST=0.0.0.0 FRONTEND_PORT=80 bash scripts/start-dev.sh
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FRONTEND_HOST` | `0.0.0.0` | Frontend bind address |
+| `FRONTEND_PORT` | `5173` | Frontend port |
+| `BACKEND_PORT` | `8080` | Backend API port |
+
 - Frontend: http://localhost:5173
+- Backend: http://localhost:8080
 - Login: `admin@sakura-dcim.local` / `admin123`
 
 ### Production
@@ -33,7 +61,50 @@ Automatically: start DB + Redis + InfluxDB → migrate → install npm → start
 |---------------|---------|
 | `make start-prod` | `scripts\start-prod.bat` |
 
-Docker Compose builds and starts all services. Web UI at http://localhost:3000.
+The prod script (`scripts/start-prod.sh`) handles:
+
+1. Installs Docker & Docker Compose if missing
+2. Builds and starts all services via `docker compose up -d --build`
+3. Waits for PostgreSQL, runs database migrations inside the container
+4. Optionally deploys a local agent (`WITH_AGENT=1`)
+
+```bash
+# Default: web UI on port 3000
+bash scripts/start-prod.sh
+
+# Custom web port:
+WEB_PORT=80 bash scripts/start-prod.sh
+
+# With local agent (auto-installs Go, ipmitool, dmidecode, KVM image):
+WITH_AGENT=1 bash scripts/start-prod.sh
+
+# Full custom:
+WEB_PORT=443 API_PORT=9090 WITH_AGENT=1 bash scripts/start-prod.sh
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WEB_PORT` | `3000` | Web UI port |
+| `API_PORT` | `8080` | Backend API port |
+| `WITH_AGENT` | `0` | Set to `1` to deploy a local agent |
+
+Web UI at http://localhost:3000.
+
+### Auto-Installed Tools
+
+When running with an agent (dev mode or `WITH_AGENT=1`), the scripts auto-install:
+
+| Tool | Purpose |
+|------|---------|
+| `ipmitool` | IPMI power control & sensor reading |
+| `dmidecode` | Hardware inventory (system/BIOS/memory info) |
+| `dnsmasq` | PXE boot DHCP/TFTP server |
+| `snmpwalk` | Switch bandwidth polling |
+| `mdadm` | Software RAID configuration |
+| `lscpu`, `lsblk`, `ip` | Hardware inventory scanning |
+| `pciutils` | PCI device detection |
+
+Supports apt (Debian/Ubuntu), dnf (Fedora/RHEL 8+), yum (CentOS/RHEL 7), and apk (Alpine).
 
 ## One-Click Update
 
@@ -55,7 +126,9 @@ docker compose down
 
 ## Deploy Agent
 
-Each datacenter needs one agent:
+Each datacenter needs one agent. In dev mode, a local agent is created automatically.
+
+For remote datacenters:
 
 ```bash
 # 1. Web panel → Agents → Add Agent → copy ID & Token
@@ -65,6 +138,8 @@ cp config.yaml.example config.yaml
 # Edit config.yaml with panel URL, agent ID, token
 go run ./cmd/agent
 ```
+
+The agent requires these tools on the host: `ipmitool`, `dmidecode`, `dnsmasq`, `docker`.
 
 ## Configuration
 
