@@ -1,0 +1,1 @@
+ALTER TABLE servers ADD COLUMN bmc_type VARCHAR(20) NOT NULL DEFAULT 'generic';

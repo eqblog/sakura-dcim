@@ -22,13 +22,26 @@ type PowerPayload struct {
 	IPMIIP   string `json:"ipmi_ip"`
 	IPMIUser string `json:"ipmi_user"`
 	IPMIPass string `json:"ipmi_pass"`
+	BMCType  string `json:"bmc_type"`
 }
 
-func (e *IPMIExecutor) runIPMI(ip, user, pass string, args ...string) (string, error) {
-	cmdArgs := append([]string{"-I", "lanplus", "-H", ip, "-U", user, "-P", pass}, args...)
+func (e *IPMIExecutor) runIPMI(bmcType, ip, user, pass string, args ...string) (string, error) {
+	cmdArgs := []string{"-I", "lanplus", "-H", ip, "-U", user, "-P", pass}
+
+	// Vendor-specific ipmitool parameters
+	switch bmcType {
+	case "supermicro":
+		// Some Supermicro models require cipher suite 17
+		cmdArgs = append(cmdArgs, "-C", "17")
+	case "huawei_ibmc":
+		// Huawei iBMC often needs cipher suite 3
+		cmdArgs = append(cmdArgs, "-C", "3")
+	}
+
+	cmdArgs = append(cmdArgs, args...)
 	cmd := exec.Command("ipmitool", cmdArgs...)
 
-	e.logger.Debug("running ipmitool", zap.Strings("args", args), zap.String("host", ip))
+	e.logger.Debug("running ipmitool", zap.String("bmc_type", bmcType), zap.Strings("args", args), zap.String("host", ip))
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -53,7 +66,7 @@ func (e *IPMIExecutor) HandlePowerOn(raw json.RawMessage) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	out, err := e.runIPMI(p.IPMIIP, p.IPMIUser, p.IPMIPass, "chassis", "power", "on")
+	out, err := e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass, "chassis", "power", "on")
 	return map[string]string{"output": out}, err
 }
 
@@ -62,7 +75,7 @@ func (e *IPMIExecutor) HandlePowerOff(raw json.RawMessage) (interface{}, error) 
 	if err != nil {
 		return nil, err
 	}
-	out, err := e.runIPMI(p.IPMIIP, p.IPMIUser, p.IPMIPass, "chassis", "power", "off")
+	out, err := e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass, "chassis", "power", "off")
 	return map[string]string{"output": out}, err
 }
 
@@ -71,7 +84,7 @@ func (e *IPMIExecutor) HandlePowerReset(raw json.RawMessage) (interface{}, error
 	if err != nil {
 		return nil, err
 	}
-	out, err := e.runIPMI(p.IPMIIP, p.IPMIUser, p.IPMIPass, "chassis", "power", "reset")
+	out, err := e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass, "chassis", "power", "reset")
 	return map[string]string{"output": out}, err
 }
 
@@ -80,7 +93,7 @@ func (e *IPMIExecutor) HandlePowerCycle(raw json.RawMessage) (interface{}, error
 	if err != nil {
 		return nil, err
 	}
-	out, err := e.runIPMI(p.IPMIIP, p.IPMIUser, p.IPMIPass, "chassis", "power", "cycle")
+	out, err := e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass, "chassis", "power", "cycle")
 	return map[string]string{"output": out}, err
 }
 
@@ -89,7 +102,7 @@ func (e *IPMIExecutor) HandlePowerStatus(raw json.RawMessage) (interface{}, erro
 	if err != nil {
 		return nil, err
 	}
-	out, err := e.runIPMI(p.IPMIIP, p.IPMIUser, p.IPMIPass, "chassis", "power", "status")
+	out, err := e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass, "chassis", "power", "status")
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +123,7 @@ func (e *IPMIExecutor) HandleSensors(raw json.RawMessage) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	out, err := e.runIPMI(p.IPMIIP, p.IPMIUser, p.IPMIPass, "sdr", "type", "Temperature", "Fan", "Voltage")
+	out, err := e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass, "sdr", "type", "Temperature", "Fan", "Voltage")
 	if err != nil {
 		return nil, err
 	}

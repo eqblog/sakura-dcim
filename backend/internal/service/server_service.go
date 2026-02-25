@@ -40,6 +40,11 @@ func (s *ServerService) Create(ctx context.Context, tenantID uuid.UUID, req *dom
 		Notes:     req.Notes,
 	}
 
+	if req.BMCType != "" {
+		server.BMCType = req.BMCType
+	} else {
+		server.BMCType = domain.BMCGeneric
+	}
 	if req.IPMIIP != "" {
 		server.IPMIIP = req.IPMIIP
 	}
@@ -129,6 +134,9 @@ func (s *ServerService) Update(ctx context.Context, id uuid.UUID, req *domain.Se
 			return nil, fmt.Errorf("encrypt ipmi_pass: %w", err)
 		}
 		server.IPMIPass = encrypted
+	}
+	if req.BMCType != nil {
+		server.BMCType = *req.BMCType
 	}
 	if req.Tags != nil {
 		server.Tags = *req.Tags

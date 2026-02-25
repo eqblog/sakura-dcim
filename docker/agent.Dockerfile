@@ -12,7 +12,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /sakura-agent ./cmd/agent
 
 FROM alpine:3.19
 
-RUN apk add --no-cache ca-certificates ipmitool lshw dmidecode
+RUN apk add --no-cache ca-certificates ipmitool dmidecode dnsmasq \
+    net-snmp-tools mdadm util-linux iproute2 pciutils curl docker-cli
 
 WORKDIR /app
 COPY --from=builder /sakura-agent .

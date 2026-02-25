@@ -108,6 +108,7 @@ type PowerPayload struct {
 	IPMIIP   string `json:"ipmi_ip"`
 	IPMIUser string `json:"ipmi_user"`
 	IPMIPass string `json:"ipmi_pass"`
+	BMCType  string `json:"bmc_type"`
 }
 
 // PowerStatusPayload is returned for power status queries
@@ -132,6 +133,7 @@ type KVMStartPayload struct {
 	IPMIIP   string `json:"ipmi_ip"`
 	IPMIUser string `json:"ipmi_user"`
 	IPMIPass string `json:"ipmi_pass"`
+	BMCType  string `json:"bmc_type"`
 }
 
 // KVMStartResponse returns the WebSocket path for the KVM session

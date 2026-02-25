@@ -254,6 +254,12 @@ func (s *DiscoveryService) ApproveServer(ctx context.Context, id uuid.UUID, user
 		agentID = req.AgentID
 	}
 
+	// Auto-detect BMC type from vendor if not specified
+	bmcType := req.BMCType
+	if bmcType == "" {
+		bmcType = domain.DetectBMCType(ds.SystemVendor)
+	}
+
 	server := &domain.Server{
 		AgentID:  agentID,
 		Hostname: req.Hostname,
@@ -262,6 +268,7 @@ func (s *DiscoveryService) ApproveServer(ctx context.Context, id uuid.UUID, user
 		IPMIIP:   req.IPMIIP,
 		IPMIUser: req.IPMIUser,
 		IPMIPass: req.IPMIPass,
+		BMCType:  bmcType,
 		CPUModel: ds.CPUModel,
 		CPUCores: ds.CPUCores,
 		RAMMB:    ds.RAMMB,

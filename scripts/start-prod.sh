@@ -6,12 +6,14 @@
 #   bash scripts/start-prod.sh                   # defaults: web=3000, api=8080
 #   WEB_PORT=80 bash scripts/start-prod.sh       # bind web UI to port 80
 #   WEB_PORT=443 API_PORT=9090 bash scripts/start-prod.sh
+#   WITH_AGENT=1 bash scripts/start-prod.sh      # also deploy a local agent
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Configurable ports (passed to docker-compose.yml via env vars)
 export WEB_PORT="${WEB_PORT:-3000}"
 export API_PORT="${API_PORT:-8080}"
+WITH_AGENT="${WITH_AGENT:-0}"
 
 echo "========================================="
 echo "  Sakura DCIM — Production Deployment"
@@ -33,9 +35,27 @@ install_pkg() {
   fi
 }
 
-# ─── 0. Install Docker if missing ───
+# ─── Helper: install agent runtime tools ───
+install_agent_tools() {
+  echo "  -> Installing agent runtime tools..."
+  if command -v apt-get &>/dev/null; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+      ipmitool dmidecode dnsmasq snmp mdadm util-linux iproute2 pciutils 2>/dev/null
+  elif command -v dnf &>/dev/null; then
+    dnf install -y ipmitool dmidecode dnsmasq net-snmp-utils mdadm util-linux iproute pciutils 2>/dev/null
+  elif command -v yum &>/dev/null; then
+    yum install -y ipmitool dmidecode dnsmasq net-snmp-utils mdadm util-linux iproute pciutils 2>/dev/null
+  elif command -v apk &>/dev/null; then
+    apk add --no-cache ipmitool dmidecode dnsmasq net-snmp-tools mdadm util-linux iproute2 pciutils 2>/dev/null
+  fi
+  # Stop dnsmasq default service (we manage it ourselves)
+  systemctl stop dnsmasq 2>/dev/null || true
+  systemctl disable dnsmasq 2>/dev/null || true
+}
+
+# ─── 0. Install dependencies ───
 echo ""
-echo "[0/3] Checking dependencies..."
+echo "[0/4] Checking dependencies..."
 
 if ! command -v curl &>/dev/null; then
   echo "  -> Installing curl..."
@@ -62,6 +82,29 @@ if ! docker compose version &>/dev/null 2>&1; then
   echo "  -> Docker Compose installed."
 fi
 
+# Agent tools + Go (only if WITH_AGENT=1)
+if [ "$WITH_AGENT" = "1" ]; then
+  if ! command -v ipmitool &>/dev/null || ! command -v dmidecode &>/dev/null || ! command -v dnsmasq &>/dev/null; then
+    install_agent_tools
+  fi
+
+  export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"
+  if ! command -v go &>/dev/null; then
+    echo "  -> Installing Go 1.22..."
+    GO_VERSION="1.22.5"
+    ARCH=$(uname -m)
+    case "$ARCH" in
+      x86_64)  GOARCH="amd64" ;;
+      aarch64) GOARCH="arm64" ;;
+      *)       GOARCH="amd64" ;;
+    esac
+    rm -rf /usr/local/go
+    curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${GOARCH}.tar.gz" | tar -C /usr/local -xzf -
+    echo 'export PATH="/usr/local/go/bin:$PATH"' > /etc/profile.d/go.sh
+    echo "  -> Go ${GO_VERSION} installed."
+  fi
+fi
+
 # Verify
 if ! command -v docker &>/dev/null || ! docker compose version &>/dev/null 2>&1; then
   echo "ERROR: Docker / Docker Compose not available. Please install manually."
@@ -70,15 +113,20 @@ fi
 
 echo "  Docker  : $(docker --version 2>/dev/null | cut -d' ' -f3 | tr -d ',')"
 echo "  Compose : $(docker compose version 2>/dev/null | cut -d' ' -f4)"
+if [ "$WITH_AGENT" = "1" ]; then
+  echo "  Go      : $(go version 2>/dev/null | cut -d' ' -f3)"
+  echo "  ipmitool: $(ipmitool -V 2>&1 | head -1 || echo 'N/A')"
+  echo "  dnsmasq : $(dnsmasq --version 2>/dev/null | head -1 | cut -d' ' -f3 || echo 'N/A')"
+fi
 echo "  OK"
 echo ""
 
 # ─── 1. Build and start ───
-echo "[1/3] Building and starting all services..."
+echo "[1/4] Building and starting all services..."
 cd "$ROOT" && docker compose up -d --build --remove-orphans
 
 # ─── 2. Wait for healthy ───
-echo "[2/3] Waiting for PostgreSQL to be healthy..."
+echo "[2/4] Waiting for PostgreSQL to be healthy..."
 for i in $(seq 1 60); do
   if docker exec sakura-postgres pg_isready -U sakura -d sakura_dcim -q 2>/dev/null; then
     echo "  PostgreSQL ready."
@@ -91,8 +139,7 @@ for i in $(seq 1 60); do
 done
 
 # ─── 3. Run migrations ───
-echo "[3/3] Running database migrations..."
-# Install migrate tool inside container and run
+echo "[3/4] Running database migrations..."
 docker exec sakura-backend sh -c '
   if [ -d /app/migrations ] && ls /app/migrations/*.up.sql >/dev/null 2>&1; then
     apk add --no-cache --quiet curl 2>/dev/null
@@ -107,6 +154,68 @@ docker exec sakura-backend sh -c '
   fi
 ' 2>&1 || true
 
+# ─── 4. Optional: set up local agent ───
+AGENT_PID=""
+if [ "$WITH_AGENT" = "1" ]; then
+  # Build KVM Docker image for agent
+  echo "[4/4] Building KVM image & setting up local agent..."
+  if ! docker images --format '{{.Repository}}:{{.Tag}}' | grep -q 'sakura-dcim/kvm-browser:latest'; then
+    docker build -t sakura-dcim/kvm-browser:latest "$ROOT/docker/kvm-browser/"
+    echo "  KVM image built."
+  fi
+
+  AGENT_CONFIG="$ROOT/agent/.dev-config.yaml"
+
+  # Wait for backend API to be ready
+  for i in $(seq 1 30); do
+    if curl -s "http://127.0.0.1:${API_PORT}/health" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+
+  if [ ! -f "$AGENT_CONFIG" ]; then
+    LOGIN_RESP=$(curl -s -X POST "http://127.0.0.1:${API_PORT}/api/v1/auth/login" \
+      -H 'Content-Type: application/json' \
+      -d '{"email":"admin@sakura-dcim.local","password":"admin123"}')
+    ACCESS_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"access_token":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+    if [ -n "$ACCESS_TOKEN" ]; then
+      AGENT_RESP=$(curl -s -X POST "http://127.0.0.1:${API_PORT}/api/v1/agents" \
+        -H 'Content-Type: application/json' \
+        -H "Authorization: Bearer $ACCESS_TOKEN" \
+        -d '{"name":"Local Agent","location":"localhost","capabilities":["ipmi","kvm","pxe","inventory","discovery"]}')
+
+      AGENT_ID=$(echo "$AGENT_RESP" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+      AGENT_TOKEN=$(echo "$AGENT_RESP" | grep -o '"token":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+      if [ -n "$AGENT_ID" ] && [ -n "$AGENT_TOKEN" ]; then
+        cat > "$AGENT_CONFIG" <<AGENTEOF
+server_url: ws://127.0.0.1:${API_PORT}/api/v1/agents/ws
+agent_id: ${AGENT_ID}
+token: ${AGENT_TOKEN}
+AGENTEOF
+        echo "  Agent created: $AGENT_ID"
+      else
+        echo "  WARNING: Failed to create agent."
+      fi
+    else
+      echo "  WARNING: Failed to login as admin."
+    fi
+  else
+    echo "  Using existing agent config."
+  fi
+
+  if [ -f "$AGENT_CONFIG" ]; then
+    echo "  Building and starting agent..."
+    cd "$ROOT/agent" && go build -o "$ROOT/agent/bin/sakura-agent" ./cmd/agent && \
+      "$ROOT/agent/bin/sakura-agent" -config "$AGENT_CONFIG" &
+    AGENT_PID=$!
+  fi
+else
+  echo "[4/4] Agent not requested (use WITH_AGENT=1 to enable)."
+fi
+
 # ─── Done ───
 HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 HOST_IP="${HOST_IP:-localhost}"
@@ -117,6 +226,9 @@ echo "  Sakura DCIM is running!"
 echo ""
 echo "  Web UI → http://${HOST_IP}:${WEB_PORT}"
 echo "  API    → http://${HOST_IP}:${WEB_PORT}/api/v1"
+if [ -n "$AGENT_PID" ]; then
+echo "  Agent  → PID $AGENT_PID (local)"
+fi
 echo ""
 echo "  Login: admin@sakura-dcim.local / admin123"
 echo ""
@@ -127,3 +239,16 @@ echo "    docker compose down             # stop all"
 echo "    docker compose restart backend  # restart backend"
 echo "    docker compose pull && docker compose up -d --build  # update"
 echo "========================================="
+
+# If agent is running, wait for it and handle Ctrl+C
+if [ -n "$AGENT_PID" ]; then
+  cleanup() {
+    echo ""
+    echo "Stopping agent..."
+    kill $AGENT_PID 2>/dev/null
+    wait $AGENT_PID 2>/dev/null
+    exit 0
+  }
+  trap cleanup SIGINT SIGTERM
+  wait $AGENT_PID
+fi

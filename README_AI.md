@@ -111,6 +111,19 @@ Inspired by [Tenantos](https://tenantos.com/) and [EasyDCIM](https://www.easydci
 - **Frontend noVNC** — One-click KVM console, fullscreen toggle, auto-disconnect on close
 - **Universal BMC Support** — Works with iDRAC, iLO, Supermicro, ASRock, any BMC with web UI
 
+#### PXE Hardware Discovery
+- **Discovery Sessions** — Start DHCP listener on agent, PXE-boot unknown servers into mini-Linux scanner
+- **Auto Inventory** — Discovered servers report CPU, RAM, disks, NICs, MAC, BMC IP, vendor info
+- **Approve Workflow** — Review discovered hardware → approve to create server with pre-filled specs
+- **BMC Auto-Detection** — Vendor string auto-maps to BMC type (Dell→iDRAC, HP→iLO, Supermicro, Lenovo XCC, Huawei iBMC)
+
+#### BMC Vendor Adaptation
+- **BMC Type Field** — Each server stores a `bmc_type` (generic, dell_idrac, hp_ilo, supermicro, lenovo_xcc, huawei_ibmc)
+- **Vendor-Aware KVM** — KVM console opens the correct BMC web UI URL per vendor (iDRAC `/restgui/start.html`, iLO `/html/login.html`, etc.)
+- **Vendor-Aware IPMI** — ipmitool uses vendor-specific cipher suites (Supermicro: `-C 17`, Huawei: `-C 3`)
+- **Auto-Detection** — Discovery and server creation auto-detect BMC type from vendor string
+- **Frontend Integration** — BMC type selector in server create/edit forms and discovery approve modal
+
 #### Phase 5 — PXE OS Reinstall + Auto RAID + Scripts
 - **OS Profiles CRUD** — Manage OS templates (Kickstart, Preseed, Autoinstall, cloud-init) with inline editor
 - **Disk Layouts CRUD** — JSON-based partition table templates
@@ -294,7 +307,7 @@ Browser (noVNC)          Backend (WS relay)         Agent                    Doc
 ```
 
 **Why this approach?**
-- **Universal**: Works with any BMC type (iDRAC, iLO, Supermicro, ASRock) — no vendor-specific protocol needed
+- **Universal**: Works with any BMC type (iDRAC, iLO, Supermicro, ASRock) — vendor-specific login URLs auto-selected by `bmc_type`
 - **Secure**: Users never access BMC directly; Docker container is network-isolated to only reach the target BMC IP
 - **Compatible**: Even Java-based KVM applets work inside the Chromium container
 - **Credential-safe**: IPMI passwords are injected into the container, never exposed to the end user
@@ -394,6 +407,14 @@ Agents:
   GET    /api/v1/agents               # List
   POST   /api/v1/agents               # Register
   WS     /api/v1/agents/ws            # Agent WebSocket
+
+Discovery:
+  POST   /api/v1/discovery/start      # Start discovery session (agent + DHCP range) ✅
+  POST   /api/v1/discovery/stop/:id   # Stop discovery session ✅
+  GET    /api/v1/discovery/sessions   # List discovery sessions ✅
+  GET    /api/v1/discovery/servers    # List discovered servers (filter by status) ✅
+  POST   /api/v1/discovery/servers/:id/approve   # Approve → create server ✅
+  POST   /api/v1/discovery/servers/:id/reject    # Reject discovered server ✅
 
 Resources:
   CRUD   /api/v1/os-profiles          # OS templates

@@ -124,6 +124,7 @@ func (s *KVMService) StartSession(ctx context.Context, serverID, userID uuid.UUI
 		"ipmi_ip":    payload.IPMIIP,
 		"ipmi_user":  payload.IPMIUser,
 		"ipmi_pass":  payload.IPMIPass,
+		"bmc_type":   string(server.BMCType),
 		"session_id": sessionID,
 		"relay_url":  relayURL,
 	}

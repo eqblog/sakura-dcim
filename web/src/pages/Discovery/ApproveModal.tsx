@@ -11,6 +11,16 @@ interface Props {
   onSuccess: () => void;
 }
 
+function detectBMCType(vendor: string): string {
+  const v = vendor.toLowerCase();
+  if (v.includes('dell')) return 'dell_idrac';
+  if (v.includes('hp') || v.includes('hpe') || v.includes('hewlett')) return 'hp_ilo';
+  if (v.includes('supermicro')) return 'supermicro';
+  if (v.includes('lenovo')) return 'lenovo_xcc';
+  if (v.includes('huawei')) return 'huawei_ibmc';
+  return 'generic';
+}
+
 const ApproveModal: React.FC<Props> = ({ open, server, agents, onClose, onSuccess }) => {
   const [form] = Form.useForm();
 
@@ -23,6 +33,7 @@ const ApproveModal: React.FC<Props> = ({ open, server, agents, onClose, onSucces
         ipmi_ip: server.bmc_ip || '',
         ipmi_user: '',
         ipmi_pass: '',
+        bmc_type: detectBMCType(server.system_vendor),
         tags: [],
         notes: `Auto-discovered: ${server.cpu_model}, ${server.cpu_cores} cores, ${Math.round(server.ram_mb / 1024)}GB RAM, ${server.disk_count} disks (${server.disk_total_gb}GB)`,
       });
@@ -84,6 +95,18 @@ const ApproveModal: React.FC<Props> = ({ open, server, agents, onClose, onSucces
         </Form.Item>
         <Form.Item name="ipmi_pass" label="IPMI Password">
           <Input.Password />
+        </Form.Item>
+        <Form.Item name="bmc_type" label="BMC Type">
+          <Select
+            options={[
+              { value: 'generic', label: 'Generic IPMI' },
+              { value: 'dell_idrac', label: 'Dell iDRAC' },
+              { value: 'hp_ilo', label: 'HPE iLO' },
+              { value: 'supermicro', label: 'Supermicro IPMI' },
+              { value: 'lenovo_xcc', label: 'Lenovo XClarity' },
+              { value: 'huawei_ibmc', label: 'Huawei iBMC' },
+            ]}
+          />
         </Form.Item>
         <Form.Item name="tags" label="Tags">
           <Select mode="tags" placeholder="Add tags" />

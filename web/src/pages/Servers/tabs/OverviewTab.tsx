@@ -38,6 +38,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ server, onUpdated }) => {
       agent_id: server.agent_id || undefined,
       primary_ip: server.primary_ip,
       ipmi_ip: server.ipmi_ip,
+      bmc_type: server.bmc_type || 'generic',
       tags: server.tags || [],
       notes: server.notes,
     });
@@ -86,6 +87,16 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ server, onUpdated }) => {
         </Descriptions.Item>
         <Descriptions.Item label="RAM">
           {server.ram_mb ? `${Math.round(server.ram_mb / 1024)} GB` : '-'}
+        </Descriptions.Item>
+        <Descriptions.Item label="BMC Type">
+          {server.bmc_type ? {
+            generic: 'Generic IPMI',
+            dell_idrac: 'Dell iDRAC',
+            hp_ilo: 'HPE iLO',
+            supermicro: 'Supermicro IPMI',
+            lenovo_xcc: 'Lenovo XClarity',
+            huawei_ibmc: 'Huawei iBMC',
+          }[server.bmc_type] || server.bmc_type : '-'}
         </Descriptions.Item>
         <Descriptions.Item label="Agent">
           {server.agent ? server.agent.name : server.agent_id || '-'}
@@ -144,6 +155,18 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ server, onUpdated }) => {
           </Form.Item>
           <Form.Item name="ipmi_pass" label="IPMI Password">
             <Input.Password placeholder="Leave empty to keep unchanged" />
+          </Form.Item>
+          <Form.Item name="bmc_type" label="BMC Type">
+            <Select
+              options={[
+                { value: 'generic', label: 'Generic IPMI' },
+                { value: 'dell_idrac', label: 'Dell iDRAC' },
+                { value: 'hp_ilo', label: 'HPE iLO' },
+                { value: 'supermicro', label: 'Supermicro IPMI' },
+                { value: 'lenovo_xcc', label: 'Lenovo XClarity' },
+                { value: 'huawei_ibmc', label: 'Huawei iBMC' },
+              ]}
+            />
           </Form.Item>
           <Form.Item name="tags" label="Tags">
             <Select mode="tags" placeholder="Press Enter to add tag" />

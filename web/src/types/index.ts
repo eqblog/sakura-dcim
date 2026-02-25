@@ -79,6 +79,8 @@ export interface Agent {
 // Server
 export type ServerStatus = 'active' | 'provisioning' | 'reinstalling' | 'offline' | 'error';
 
+export type BMCType = 'generic' | 'dell_idrac' | 'hp_ilo' | 'supermicro' | 'lenovo_xcc' | 'huawei_ibmc';
+
 export interface Server {
   id: string;
   tenant_id?: string;
@@ -88,6 +90,7 @@ export interface Server {
   status: ServerStatus;
   primary_ip: string;
   ipmi_ip: string;
+  bmc_type: BMCType;
   cpu_model: string;
   cpu_cores: number;
   ram_mb: number;
@@ -106,6 +109,7 @@ export interface ServerCreateRequest {
   ipmi_ip?: string;
   ipmi_user?: string;
   ipmi_pass?: string;
+  bmc_type?: BMCType;
   tags?: string[];
   notes?: string;
 }

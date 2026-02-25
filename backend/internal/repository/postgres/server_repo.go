@@ -29,13 +29,13 @@ func inetOrNil(s string) interface{} {
 }
 
 func (r *ServerRepo) Create(ctx context.Context, server *domain.Server) error {
-	query := `INSERT INTO servers (id, tenant_id, agent_id, hostname, label, status, primary_ip, ipmi_ip, ipmi_user, ipmi_pass, tags, notes, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)`
+	query := `INSERT INTO servers (id, tenant_id, agent_id, hostname, label, status, primary_ip, ipmi_ip, ipmi_user, ipmi_pass, bmc_type, tags, notes, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)`
 	now := time.Now()
 	_, err := r.db.Exec(ctx, query,
 		server.ID, server.TenantID, server.AgentID, server.Hostname, server.Label,
 		server.Status, inetOrNil(server.PrimaryIP), inetOrNil(server.IPMIIP), server.IPMIUser, server.IPMIPass,
-		server.Tags, server.Notes, now)
+		server.BMCType, server.Tags, server.Notes, now)
 	if err == nil {
 		server.CreatedAt = now
 		server.UpdatedAt = now
@@ -45,14 +45,14 @@ func (r *ServerRepo) Create(ctx context.Context, server *domain.Server) error {
 
 func (r *ServerRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Server, error) {
 	query := `SELECT id, tenant_id, agent_id, hostname, label, status,
-		COALESCE(primary_ip::text,''), COALESCE(ipmi_ip::text,''), ipmi_user, ipmi_pass,
+		COALESCE(primary_ip::text,''), COALESCE(ipmi_ip::text,''), ipmi_user, ipmi_pass, bmc_type,
 		cpu_model, cpu_cores, ram_mb, tags, notes, created_at, updated_at
 		FROM servers WHERE id = $1`
 
 	var s domain.Server
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&s.ID, &s.TenantID, &s.AgentID, &s.Hostname, &s.Label, &s.Status,
-		&s.PrimaryIP, &s.IPMIIP, &s.IPMIUser, &s.IPMIPass,
+		&s.PrimaryIP, &s.IPMIIP, &s.IPMIUser, &s.IPMIPass, &s.BMCType,
 		&s.CPUModel, &s.CPUCores, &s.RAMMB, &s.Tags, &s.Notes,
 		&s.CreatedAt, &s.UpdatedAt,
 	)
@@ -110,7 +110,7 @@ func (r *ServerRepo) List(ctx context.Context, params domain.ServerListParams) (
 	offset := (params.Page - 1) * params.PageSize
 
 	selectQuery := fmt.Sprintf(`SELECT id, tenant_id, agent_id, hostname, label, status,
-		COALESCE(primary_ip::text,''), COALESCE(ipmi_ip::text,''),
+		COALESCE(primary_ip::text,''), COALESCE(ipmi_ip::text,''), bmc_type,
 		cpu_model, cpu_cores, ram_mb, tags, notes, created_at, updated_at
 		FROM servers %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d`, where, argIdx, argIdx+1)
 	args = append(args, params.PageSize, offset)
@@ -125,7 +125,7 @@ func (r *ServerRepo) List(ctx context.Context, params domain.ServerListParams) (
 		var s domain.Server
 		err := row.Scan(
 			&s.ID, &s.TenantID, &s.AgentID, &s.Hostname, &s.Label, &s.Status,
-			&s.PrimaryIP, &s.IPMIIP, &s.CPUModel, &s.CPUCores, &s.RAMMB,
+			&s.PrimaryIP, &s.IPMIIP, &s.BMCType, &s.CPUModel, &s.CPUCores, &s.RAMMB,
 			&s.Tags, &s.Notes, &s.CreatedAt, &s.UpdatedAt,
 		)
 		return s, err
@@ -150,13 +150,13 @@ func (r *ServerRepo) List(ctx context.Context, params domain.ServerListParams) (
 
 func (r *ServerRepo) Update(ctx context.Context, server *domain.Server) error {
 	query := `UPDATE servers SET hostname = $2, label = $3, agent_id = $4, primary_ip = $5,
-		ipmi_ip = $6, ipmi_user = $7, ipmi_pass = $8, tags = $9, notes = $10, updated_at = $11
+		ipmi_ip = $6, ipmi_user = $7, ipmi_pass = $8, bmc_type = $9, tags = $10, notes = $11, updated_at = $12
 		WHERE id = $1`
 	now := time.Now()
 	_, err := r.db.Exec(ctx, query,
 		server.ID, server.Hostname, server.Label, server.AgentID,
 		inetOrNil(server.PrimaryIP), inetOrNil(server.IPMIIP), server.IPMIUser, server.IPMIPass,
-		server.Tags, server.Notes, now)
+		server.BMCType, server.Tags, server.Notes, now)
 	if err == nil {
 		server.UpdatedAt = now
 	}

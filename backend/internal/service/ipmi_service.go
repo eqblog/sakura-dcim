@@ -41,39 +41,39 @@ var powerActionMap = map[string]string{
 	"status": ws.ActionIPMIPowerStatus,
 }
 
-// decryptIPMI fetches the server and returns decrypted IPMI credentials + agentID.
-func (s *IPMIService) decryptIPMI(ctx context.Context, serverID uuid.UUID) (agentID uuid.UUID, ipmiIP, ipmiUser, ipmiPass string, err error) {
+// decryptIPMI fetches the server and returns decrypted IPMI credentials, agentID, and bmcType.
+func (s *IPMIService) decryptIPMI(ctx context.Context, serverID uuid.UUID) (agentID uuid.UUID, ipmiIP, ipmiUser, ipmiPass, bmcType string, err error) {
 	server, err := s.serverRepo.GetByID(ctx, serverID)
 	if err != nil {
-		return uuid.Nil, "", "", "", fmt.Errorf("server not found: %w", err)
+		return uuid.Nil, "", "", "", "", fmt.Errorf("server not found: %w", err)
 	}
 
 	if server.AgentID == nil {
-		return uuid.Nil, "", "", "", fmt.Errorf("server has no agent assigned")
+		return uuid.Nil, "", "", "", "", fmt.Errorf("server has no agent assigned")
 	}
 
 	if server.IPMIIP == "" {
-		return uuid.Nil, "", "", "", fmt.Errorf("server has no IPMI IP configured")
+		return uuid.Nil, "", "", "", "", fmt.Errorf("server has no IPMI IP configured")
 	}
 
 	if !s.hub.IsAgentOnline(*server.AgentID) {
-		return uuid.Nil, "", "", "", fmt.Errorf("agent is offline")
+		return uuid.Nil, "", "", "", "", fmt.Errorf("agent is offline")
 	}
 
 	if server.IPMIUser != "" {
 		ipmiUser, err = crypto.DecryptAESGCM(server.IPMIUser, s.cfg.Crypto.EncryptionKey)
 		if err != nil {
-			return uuid.Nil, "", "", "", fmt.Errorf("decrypt ipmi_user: %w", err)
+			return uuid.Nil, "", "", "", "", fmt.Errorf("decrypt ipmi_user: %w", err)
 		}
 	}
 	if server.IPMIPass != "" {
 		ipmiPass, err = crypto.DecryptAESGCM(server.IPMIPass, s.cfg.Crypto.EncryptionKey)
 		if err != nil {
-			return uuid.Nil, "", "", "", fmt.Errorf("decrypt ipmi_pass: %w", err)
+			return uuid.Nil, "", "", "", "", fmt.Errorf("decrypt ipmi_pass: %w", err)
 		}
 	}
 
-	return *server.AgentID, server.IPMIIP, ipmiUser, ipmiPass, nil
+	return *server.AgentID, server.IPMIIP, ipmiUser, ipmiPass, string(server.BMCType), nil
 }
 
 // PowerAction executes a power control command (on/off/reset/cycle).
@@ -83,15 +83,16 @@ func (s *IPMIService) PowerAction(ctx context.Context, serverID uuid.UUID, actio
 		return nil, fmt.Errorf("invalid power action: %s (valid: on, off, reset, cycle, status)", action)
 	}
 
-	agentID, ipmiIP, ipmiUser, ipmiPass, err := s.decryptIPMI(ctx, serverID)
+	agentID, ipmiIP, ipmiUser, ipmiPass, bmcType, err := s.decryptIPMI(ctx, serverID)
 	if err != nil {
 		return nil, err
 	}
 
-	payload := ws.PowerPayload{
-		IPMIIP:   ipmiIP,
-		IPMIUser: ipmiUser,
-		IPMIPass: ipmiPass,
+	payload := map[string]string{
+		"ipmi_ip":   ipmiIP,
+		"ipmi_user": ipmiUser,
+		"ipmi_pass": ipmiPass,
+		"bmc_type":  bmcType,
 	}
 
 	s.logger.Info("IPMI power action",
@@ -118,15 +119,16 @@ func (s *IPMIService) PowerAction(ctx context.Context, serverID uuid.UUID, actio
 
 // GetPowerStatus queries the current power state of a server.
 func (s *IPMIService) GetPowerStatus(ctx context.Context, serverID uuid.UUID) (string, error) {
-	agentID, ipmiIP, ipmiUser, ipmiPass, err := s.decryptIPMI(ctx, serverID)
+	agentID, ipmiIP, ipmiUser, ipmiPass, bmcType, err := s.decryptIPMI(ctx, serverID)
 	if err != nil {
 		return "unknown", err
 	}
 
-	payload := ws.PowerPayload{
-		IPMIIP:   ipmiIP,
-		IPMIUser: ipmiUser,
-		IPMIPass: ipmiPass,
+	payload := map[string]string{
+		"ipmi_ip":   ipmiIP,
+		"ipmi_user": ipmiUser,
+		"ipmi_pass": ipmiPass,
+		"bmc_type":  bmcType,
 	}
 
 	resp, err := s.hub.SendRequest(agentID, ws.ActionIPMIPowerStatus, payload, 15*time.Second)
@@ -152,15 +154,16 @@ func (s *IPMIService) GetPowerStatus(ctx context.Context, serverID uuid.UUID) (s
 
 // GetSensors queries IPMI sensor data from the agent.
 func (s *IPMIService) GetSensors(ctx context.Context, serverID uuid.UUID) ([]map[string]string, error) {
-	agentID, ipmiIP, ipmiUser, ipmiPass, err := s.decryptIPMI(ctx, serverID)
+	agentID, ipmiIP, ipmiUser, ipmiPass, bmcType, err := s.decryptIPMI(ctx, serverID)
 	if err != nil {
 		return nil, err
 	}
 
-	payload := ws.PowerPayload{
-		IPMIIP:   ipmiIP,
-		IPMIUser: ipmiUser,
-		IPMIPass: ipmiPass,
+	payload := map[string]string{
+		"ipmi_ip":   ipmiIP,
+		"ipmi_user": ipmiUser,
+		"ipmi_pass": ipmiPass,
+		"bmc_type":  bmcType,
 	}
 
 	resp, err := s.hub.SendRequest(agentID, ws.ActionIPMISensors, payload, 15*time.Second)

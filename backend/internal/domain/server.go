@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,6 +17,41 @@ const (
 	ServerStatusError        ServerStatus = "error"
 )
 
+type BMCType string
+
+const (
+	BMCGeneric    BMCType = "generic"
+	BMCDellIDRAC  BMCType = "dell_idrac"
+	BMCHPiLO      BMCType = "hp_ilo"
+	BMCSupermicro BMCType = "supermicro"
+	BMCLenovoXCC  BMCType = "lenovo_xcc"
+	BMCHuaweiIBMC BMCType = "huawei_ibmc"
+)
+
+// AllBMCTypes lists valid BMC types for validation
+var AllBMCTypes = []BMCType{
+	BMCGeneric, BMCDellIDRAC, BMCHPiLO, BMCSupermicro, BMCLenovoXCC, BMCHuaweiIBMC,
+}
+
+// DetectBMCType infers BMC type from a system vendor string (e.g. from discovery)
+func DetectBMCType(vendor string) BMCType {
+	v := strings.ToLower(vendor)
+	switch {
+	case strings.Contains(v, "dell"):
+		return BMCDellIDRAC
+	case strings.Contains(v, "hp"), strings.Contains(v, "hpe"), strings.Contains(v, "hewlett"):
+		return BMCHPiLO
+	case strings.Contains(v, "supermicro"):
+		return BMCSupermicro
+	case strings.Contains(v, "lenovo"):
+		return BMCLenovoXCC
+	case strings.Contains(v, "huawei"):
+		return BMCHuaweiIBMC
+	default:
+		return BMCGeneric
+	}
+}
+
 type Server struct {
 	ID       uuid.UUID    `json:"id" db:"id"`
 	TenantID *uuid.UUID   `json:"tenant_id,omitempty" db:"tenant_id"`
@@ -26,8 +62,9 @@ type Server struct {
 	// Network
 	PrimaryIP string `json:"primary_ip" db:"primary_ip"`
 	IPMIIP    string `json:"ipmi_ip" db:"ipmi_ip"`
-	IPMIUser  string `json:"ipmi_user,omitempty" db:"ipmi_user"`   // encrypted
-	IPMIPass  string `json:"ipmi_pass,omitempty" db:"ipmi_pass"`   // encrypted
+	IPMIUser  string  `json:"ipmi_user,omitempty" db:"ipmi_user"` // encrypted
+	IPMIPass  string  `json:"ipmi_pass,omitempty" db:"ipmi_pass"` // encrypted
+	BMCType   BMCType `json:"bmc_type" db:"bmc_type"`
 	// Hardware summary
 	CPUModel string `json:"cpu_model" db:"cpu_model"`
 	CPUCores int    `json:"cpu_cores" db:"cpu_cores"`
@@ -44,15 +81,16 @@ type Server struct {
 }
 
 type ServerCreateRequest struct {
-	AgentID  *uuid.UUID `json:"agent_id"`
-	Hostname string     `json:"hostname" binding:"required"`
-	Label    string     `json:"label"`
-	PrimaryIP string   `json:"primary_ip"`
-	IPMIIP   string     `json:"ipmi_ip"`
-	IPMIUser string     `json:"ipmi_user"`
-	IPMIPass string     `json:"ipmi_pass"`
-	Tags     []string   `json:"tags"`
-	Notes    string     `json:"notes"`
+	AgentID   *uuid.UUID `json:"agent_id"`
+	Hostname  string     `json:"hostname" binding:"required"`
+	Label     string     `json:"label"`
+	PrimaryIP string     `json:"primary_ip"`
+	IPMIIP    string     `json:"ipmi_ip"`
+	IPMIUser  string     `json:"ipmi_user"`
+	IPMIPass  string     `json:"ipmi_pass"`
+	BMCType   BMCType    `json:"bmc_type"`
+	Tags      []string   `json:"tags"`
+	Notes     string     `json:"notes"`
 }
 
 type ServerUpdateRequest struct {
@@ -63,6 +101,7 @@ type ServerUpdateRequest struct {
 	IPMIIP    *string    `json:"ipmi_ip"`
 	IPMIUser  *string    `json:"ipmi_user"`
 	IPMIPass  *string    `json:"ipmi_pass"`
+	BMCType   *BMCType   `json:"bmc_type"`
 	Tags      *[]string  `json:"tags"`
 	Notes     *string    `json:"notes"`
 }

@@ -38,7 +38,7 @@ install_pkg() {
 
 # ─── 0. Install dependencies if missing ───
 echo ""
-echo "[0/7] Checking & installing dependencies..."
+echo "[0/8] Checking & installing dependencies..."
 
 # curl
 if ! command -v curl &>/dev/null; then
@@ -56,6 +56,28 @@ fi
 if ! command -v make &>/dev/null; then
   echo "  -> Installing make..."
   install_pkg make
+fi
+
+# Agent runtime tools (ipmitool, dmidecode, dnsmasq, snmp, mdadm, etc.)
+install_agent_tools() {
+  echo "  -> Installing agent runtime tools..."
+  if command -v apt-get &>/dev/null; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+      ipmitool dmidecode dnsmasq snmp mdadm util-linux iproute2 pciutils 2>/dev/null
+  elif command -v dnf &>/dev/null; then
+    dnf install -y ipmitool dmidecode dnsmasq net-snmp-utils mdadm util-linux iproute pciutils 2>/dev/null
+  elif command -v yum &>/dev/null; then
+    yum install -y ipmitool dmidecode dnsmasq net-snmp-utils mdadm util-linux iproute pciutils 2>/dev/null
+  elif command -v apk &>/dev/null; then
+    apk add --no-cache ipmitool dmidecode dnsmasq net-snmp-tools mdadm util-linux iproute2 pciutils 2>/dev/null
+  fi
+  # Stop dnsmasq default service (we manage it ourselves)
+  systemctl stop dnsmasq 2>/dev/null || true
+  systemctl disable dnsmasq 2>/dev/null || true
+}
+
+if ! command -v ipmitool &>/dev/null || ! command -v dmidecode &>/dev/null || ! command -v dnsmasq &>/dev/null; then
+  install_agent_tools
 fi
 
 # Docker
@@ -135,10 +157,10 @@ echo "  OK"
 echo ""
 
 # ─── 1. Start infrastructure ───
-echo "[1/7] Starting PostgreSQL, Redis, InfluxDB..."
+echo "[1/8] Starting PostgreSQL, Redis, InfluxDB..."
 cd "$ROOT" && docker compose up -d postgres redis influxdb
 
-echo "[2/7] Waiting for PostgreSQL to be ready..."
+echo "[2/8] Waiting for PostgreSQL to be ready..."
 for i in $(seq 1 30); do
   if docker exec sakura-postgres pg_isready -U sakura -d sakura_dcim -q 2>/dev/null; then
     echo "  PostgreSQL ready."
@@ -152,20 +174,20 @@ for i in $(seq 1 30); do
 done
 
 # ─── 2. Run migrations ───
-echo "[3/7] Running database migrations..."
+echo "[3/8] Running database migrations..."
 cd "$ROOT/backend" && go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest \
   -path migrations -database "postgres://sakura:sakura@localhost:5432/sakura_dcim?sslmode=disable" up 2>&1 || true
 
 # ─── 3. Install frontend dependencies if needed ───
 if [ ! -d "$ROOT/web/node_modules" ]; then
-  echo "[4/7] Installing frontend dependencies..."
+  echo "[4/8] Installing frontend dependencies..."
   cd "$ROOT/web" && npm install
 else
-  echo "[4/7] Frontend dependencies already installed."
+  echo "[4/8] Frontend dependencies already installed."
 fi
 
 # ─── 4. Start backend ───
-echo "[5/7] Starting backend on port ${BACKEND_PORT}..."
+echo "[5/8] Starting backend on port ${BACKEND_PORT}..."
 cd "$ROOT/backend" && go run ./cmd/server &
 BACKEND_PID=$!
 
@@ -182,8 +204,17 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
-# ─── 5. Auto-create local dev agent ───
-echo "[6/7] Setting up local dev agent..."
+# ─── 5. Build KVM Docker image ───
+echo "[6/8] Building KVM browser image..."
+if ! docker images --format '{{.Repository}}:{{.Tag}}' | grep -q 'sakura-dcim/kvm-browser:latest'; then
+  docker build -t sakura-dcim/kvm-browser:latest "$ROOT/docker/kvm-browser/"
+  echo "  KVM image built."
+else
+  echo "  KVM image already exists."
+fi
+
+# ─── 6. Auto-create local dev agent ───
+echo "[7/8] Setting up local dev agent..."
 AGENT_CONFIG="$ROOT/agent/.dev-config.yaml"
 AGENT_PID=""
 
@@ -230,7 +261,7 @@ if [ -f "$AGENT_CONFIG" ]; then
 fi
 
 # ─── 6. Start frontend ───
-echo "[7/7] Starting frontend..."
+echo "[8/8] Starting frontend..."
 
 # Detect host IP for display
 HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}')

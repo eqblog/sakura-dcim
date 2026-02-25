@@ -71,6 +71,7 @@ type DiscoveryApproveRequest struct {
 	IPMIIP   string     `json:"ipmi_ip"`
 	IPMIUser string     `json:"ipmi_user"`
 	IPMIPass string     `json:"ipmi_pass"`
+	BMCType  BMCType    `json:"bmc_type"`
 	Tags     []string   `json:"tags"`
 	Notes    string     `json:"notes"`
 }

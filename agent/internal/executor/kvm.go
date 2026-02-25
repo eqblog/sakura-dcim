@@ -26,6 +26,7 @@ type KVMStartPayload struct {
 	IPMIIP    string `json:"ipmi_ip"`
 	IPMIUser  string `json:"ipmi_user"`
 	IPMIPass  string `json:"ipmi_pass"`
+	BMCType   string `json:"bmc_type"`
 	SessionID string `json:"session_id"`
 	RelayURL  string `json:"relay_url"`
 }
@@ -71,7 +72,7 @@ func (e *KVMExecutor) HandleKVMStart(raw json.RawMessage) (interface{}, error) {
 	}
 	e.mu.Unlock()
 
-	targetURL := fmt.Sprintf("https://%s", p.IPMIIP)
+	targetURL := buildKVMTargetURL(p.BMCType, p.IPMIIP)
 	containerName := kvmContainerPrefix + p.SessionID
 
 	// Start Docker container
@@ -290,6 +291,24 @@ func parseDockerPort(output string) string {
 		}
 	}
 	return ""
+}
+
+// buildKVMTargetURL returns the vendor-specific BMC web UI URL for Chromium kiosk mode.
+func buildKVMTargetURL(bmcType, ip string) string {
+	switch bmcType {
+	case "dell_idrac":
+		return fmt.Sprintf("https://%s/restgui/start.html", ip)
+	case "hp_ilo":
+		return fmt.Sprintf("https://%s/html/login.html", ip)
+	case "supermicro":
+		return fmt.Sprintf("https://%s/cgi/login.cgi", ip)
+	case "lenovo_xcc":
+		return fmt.Sprintf("https://%s/index.html", ip)
+	case "huawei_ibmc":
+		return fmt.Sprintf("https://%s/login.html", ip)
+	default:
+		return fmt.Sprintf("https://%s", ip)
+	}
 }
 
 func waitForTCP(addr string, timeout time.Duration) error {

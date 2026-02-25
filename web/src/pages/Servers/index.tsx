@@ -284,6 +284,18 @@ const ServerListPage: React.FC = () => {
           <Form.Item name="ipmi_pass" label="IPMI Password">
             <Input.Password placeholder="IPMI password" />
           </Form.Item>
+          <Form.Item name="bmc_type" label="BMC Type" initialValue="generic">
+            <Select
+              options={[
+                { value: 'generic', label: 'Generic IPMI' },
+                { value: 'dell_idrac', label: 'Dell iDRAC' },
+                { value: 'hp_ilo', label: 'HPE iLO' },
+                { value: 'supermicro', label: 'Supermicro IPMI' },
+                { value: 'lenovo_xcc', label: 'Lenovo XClarity' },
+                { value: 'huawei_ibmc', label: 'Huawei iBMC' },
+              ]}
+            />
+          </Form.Item>
           <Form.Item name="tags" label="Tags">
             <Select mode="tags" placeholder="Press Enter to add tag" />
           </Form.Item>
