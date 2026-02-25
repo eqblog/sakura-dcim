@@ -1,10 +1,17 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type PluginOption } from 'vite'
 import react from '@vitejs/plugin-react'
-import basicSsl from '@vitejs/plugin-basic-ssl'
+
+// TLS for dev — optional dependency, gracefully skipped if not installed
+let basicSsl: (() => PluginOption) | undefined
+try {
+  basicSsl = (await import('@vitejs/plugin-basic-ssl')).default
+} catch {
+  // not installed — dev server will run on plain HTTP
+}
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), basicSsl()],
+  plugins: [react(), basicSsl?.()].filter(Boolean) as PluginOption[],
   server: {
     proxy: {
       '/api': {

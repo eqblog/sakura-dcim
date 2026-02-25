@@ -213,13 +213,9 @@ echo "[4/8] Running database migrations..."
 cd "$ROOT/backend" && go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest \
   -path migrations -database "postgres://sakura:sakura@localhost:5432/sakura_dcim?sslmode=disable" up 2>&1 || true
 
-# ─── 4. Install frontend dependencies if needed ───
-if [ ! -d "$ROOT/web/node_modules" ]; then
-  echo "[5/8] Installing frontend dependencies..."
-  cd "$ROOT/web" && npm install
-else
-  echo "[5/8] Frontend dependencies already installed."
-fi
+# ─── 4. Install frontend dependencies ───
+echo "[5/8] Installing frontend dependencies..."
+cd "$ROOT/web" && npm install --silent
 
 # ─── 5. Start backend ───
 echo "[6/8] Starting backend on port ${BACKEND_PORT}..."

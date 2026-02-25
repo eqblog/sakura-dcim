@@ -57,13 +57,9 @@ go run -tags "postgres" github.com/golang-migrate/migrate/v4/cmd/migrate@latest 
 cd /d "%ROOT%"
 
 REM ─── 4. Install frontend deps ───
-if not exist "%ROOT%\web\node_modules" (
-    echo [4/8] Installing frontend dependencies...
-    cd /d "%ROOT%\web" && call npm install
-    cd /d "%ROOT%"
-) else (
-    echo [4/8] Frontend dependencies OK.
-)
+echo [4/8] Installing frontend dependencies...
+cd /d "%ROOT%\web" && call npm install --silent
+cd /d "%ROOT%"
 
 REM ─── 5. Start backend ───
 echo [5/8] Starting backend on port %BACKEND_PORT%...
