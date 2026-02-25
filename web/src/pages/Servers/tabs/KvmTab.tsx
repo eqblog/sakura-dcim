@@ -47,16 +47,20 @@ const KvmTab: React.FC<KvmTabProps> = ({ serverId }) => {
         throw new Error(resp.error || 'Failed to start KVM session');
       }
 
-      const { session_id, ws_url } = resp.data as { session_id: string; ws_url: string };
+      const { session_id } = resp.data as { session_id: string };
       setSessionId(session_id);
       setStatus('connecting');
+
+      // Build WS URL from current browser location (avoids proxy host mismatch)
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      const wsUrl = `${wsProtocol}://${window.location.host}/api/v1/kvm/ws?session=${session_id}`;
 
       // Wait briefly for agent relay to establish
       await new Promise(r => setTimeout(r, 2000));
 
       if (!canvasRef.current) return;
 
-      const rfb = new RFB(canvasRef.current, ws_url, {
+      const rfb = new RFB(canvasRef.current, wsUrl, {
         scaleViewport: true,
         resizeSession: false,
         showDotCursor: true,

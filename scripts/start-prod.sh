@@ -90,8 +90,8 @@ if [ "$WITH_AGENT" = "1" ]; then
 
   export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"
   if ! command -v go &>/dev/null; then
-    echo "  -> Installing Go 1.22..."
-    GO_VERSION="1.22.5"
+    echo "  -> Installing Go 1.25..."
+    GO_VERSION="1.25.3"
     ARCH=$(uname -m)
     case "$ARCH" in
       x86_64)  GOARCH="amd64" ;;
