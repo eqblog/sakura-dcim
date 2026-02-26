@@ -192,6 +192,16 @@ const SubnetConfigTab: React.FC<Props> = ({ pool, tenants, onSaved }) => {
           </Row>
         )}
 
+        {switchAutomation && (
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="dhcp_server_ip" label="DHCP Relay Server" tooltip="DHCP server IP for ip helper-address on SVI. Leave blank to skip DHCP relay.">
+                <Input placeholder="10.0.0.1 (auto-configured on SVI)" />
+              </Form.Item>
+            </Col>
+          </Row>
+        )}
+
         <Form.Item name="notes" label="Notes">
           <Input.TextArea rows={4} placeholder="Additional notes for this subnet..." />
         </Form.Item>

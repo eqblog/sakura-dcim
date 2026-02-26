@@ -1,0 +1,1 @@
+ALTER TABLE ip_pools ADD COLUMN IF NOT EXISTS dhcp_server_ip VARCHAR(255) DEFAULT '';

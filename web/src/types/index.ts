@@ -308,6 +308,7 @@ export interface IPPool {
   native_vlan_id: number;
   trunk_vlans: string;
   vlan_allocation: 'fixed' | 'auto_range';
+  dhcp_server_ip: string;
   parent_id?: string;
   pool_type: 'ip_pool' | 'subnet';
   total_ips: number;

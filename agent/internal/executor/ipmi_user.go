@@ -84,21 +84,54 @@ func (e *IPMIExecutor) HandleCreateTempUser(raw json.RawMessage) (interface{}, e
 		return nil, fmt.Errorf("enable user (slot %d): %w", freeSlot, err)
 	}
 
-	// 6. Set channel access (channel 1 = LAN)
+	// 6. Set channel access + user privilege (try multiple methods for BMC compatibility)
 	privStr := strconv.Itoa(p.Privilege)
-	accessArgs := fmt.Sprintf("callin=on ipmi=on link=on privilege=%s", privStr)
-	if _, err := e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass,
-		"channel", "setaccess", "1", slotStr, accessArgs); err != nil {
-		// Non-fatal: some BMCs have different channel numbers or syntax.
-		// Try alternate syntax (split arguments).
-		e.logger.Warn("channel setaccess failed with combined args, trying split args",
-			zap.Int("slot", freeSlot), zap.Error(err))
-		if _, err2 := e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass,
-			"channel", "setaccess", "1", slotStr,
-			"callin=on", "ipmi=on", "link=on", "privilege="+privStr); err2 != nil {
-			e.logger.Warn("channel setaccess also failed with split args, user may have limited access",
-				zap.Int("slot", freeSlot), zap.Error(err2))
+	channelAccessOK := false
+
+	// Try LAN channels 1 and 2 (most BMCs use 1, some use 2)
+	for _, ch := range []string{"1", "2"} {
+		// Method 1: channel setaccess with combined args
+		if _, err := e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass,
+			"channel", "setaccess", ch, slotStr,
+			fmt.Sprintf("callin=on ipmi=on link=on privilege=%s", privStr)); err == nil {
+			e.logger.Info("channel setaccess succeeded", zap.String("channel", ch), zap.Int("slot", freeSlot))
+			channelAccessOK = true
+			break
 		}
+		// Method 2: channel setaccess with split args
+		if _, err := e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass,
+			"channel", "setaccess", ch, slotStr,
+			"callin=on", "ipmi=on", "link=on", "privilege="+privStr); err == nil {
+			e.logger.Info("channel setaccess (split args) succeeded", zap.String("channel", ch), zap.Int("slot", freeSlot))
+			channelAccessOK = true
+			break
+		}
+	}
+
+	if !channelAccessOK {
+		e.logger.Warn("channel setaccess failed on all channels, will rely on user priv",
+			zap.Int("slot", freeSlot))
+	}
+
+	// 7. Set user privilege level (required by Dell iDRAC and some other BMCs)
+	// This is separate from channel setaccess and is critical for iDRAC login.
+	userPrivOK := false
+	for _, ch := range []string{"1", "2"} {
+		if _, err := e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass,
+			"user", "priv", slotStr, privStr, ch); err == nil {
+			e.logger.Info("user priv succeeded", zap.String("channel", ch), zap.Int("slot", freeSlot))
+			userPrivOK = true
+			break
+		}
+	}
+
+	if !channelAccessOK && !userPrivOK {
+		// Both methods failed — user won't be able to login. Rollback.
+		e.logger.Error("failed to set any channel access or user privilege, rolling back user",
+			zap.Int("slot", freeSlot))
+		e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass, "user", "disable", slotStr)
+		e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass, "user", "set", "name", slotStr, "")
+		return nil, fmt.Errorf("failed to grant channel access for user slot %d — tried channel setaccess and user priv on channels 1,2", freeSlot)
 	}
 
 	e.logger.Info("temp IPMI user created",

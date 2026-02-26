@@ -220,12 +220,88 @@ func (e *SwitchExecutor) execSSH(host string, port int, user, pass string, comma
 	}
 	defer session.Close()
 
-	cmdStr := strings.Join(commands, "\n")
-	out, err := session.CombinedOutput(cmdStr)
-	if err != nil {
-		return string(out), fmt.Errorf("ssh exec: %s: %w", string(out), err)
+	e.logger.Info("SSH executing commands",
+		zap.String("host", host),
+		zap.Int("count", len(commands)),
+		zap.Strings("commands", commands),
+	)
+
+	// Request PTY — network switches require an interactive terminal session.
+	// Without PTY, commands sent via exec channel are often ignored or fail.
+	modes := ssh.TerminalModes{
+		ssh.ECHO:          0, // disable echo
+		ssh.TTY_OP_ISPEED: 14400,
+		ssh.TTY_OP_OSPEED: 14400,
 	}
-	return string(out), nil
+	if err := session.RequestPty("xterm", 80, 200, modes); err != nil {
+		e.logger.Warn("PTY request failed, falling back to exec mode", zap.Error(err))
+		// Fallback: try exec mode for devices that don't support PTY
+		cmdStr := strings.Join(commands, "\n")
+		out, err := session.CombinedOutput(cmdStr)
+		return string(out), err
+	}
+
+	// Use stdin/stdout pipes for interactive shell
+	stdin, err := session.StdinPipe()
+	if err != nil {
+		return "", fmt.Errorf("stdin pipe: %w", err)
+	}
+	var outBuf strings.Builder
+	session.Stdout = &outBuf
+	session.Stderr = &outBuf
+
+	if err := session.Shell(); err != nil {
+		return "", fmt.Errorf("start shell: %w", err)
+	}
+
+	// Wait for shell prompt to appear
+	time.Sleep(1 * time.Second)
+
+	// Disable terminal paging so output doesn't block on --More-- prompts
+	fmt.Fprintf(stdin, "terminal length 0\n")
+	time.Sleep(500 * time.Millisecond)
+
+	// Send commands one by one with a delay for the switch to process
+	for _, cmd := range commands {
+		fmt.Fprintf(stdin, "%s\n", cmd)
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	// Wait for last command to finish (write memory / copy run start can be slow)
+	time.Sleep(2 * time.Second)
+
+	// Send exit and close stdin
+	fmt.Fprintf(stdin, "exit\n")
+	time.Sleep(500 * time.Millisecond)
+	stdin.Close()
+
+	// Wait for session to complete (with timeout)
+	done := make(chan error, 1)
+	go func() { done <- session.Wait() }()
+	select {
+	case <-done:
+		// Session ended normally
+	case <-time.After(30 * time.Second):
+		e.logger.Warn("SSH session timed out", zap.String("host", host))
+		return outBuf.String(), fmt.Errorf("ssh session timed out after 30s")
+	}
+
+	output := outBuf.String()
+	e.logger.Info("SSH execution completed",
+		zap.String("host", host),
+		zap.Int("output_len", len(output)),
+		zap.String("output", truncateOutput(output, 500)),
+	)
+
+	return output, nil
+}
+
+// truncateOutput returns the last n bytes of output for logging.
+func truncateOutput(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return "..." + s[len(s)-maxLen:]
 }
 
 // generateCiscoPortModeCmds generates switchport mode commands for Cisco IOS/NX-OS/Arista EOS.
@@ -652,17 +728,18 @@ func (e *SwitchExecutor) HandleTestConnection(raw json.RawMessage) (interface{},
 
 // SwitchVLANProvisionPayload contains parameters for VLAN infrastructure provisioning.
 type SwitchVLANProvisionPayload struct {
-	SwitchIP string `json:"switch_ip"`
-	SSHUser  string `json:"ssh_user"`
-	SSHPass  string `json:"ssh_pass"`
-	SSHPort  int    `json:"ssh_port"`
-	Vendor   string `json:"vendor"`
-	VlanID   int    `json:"vlan_id"`
-	VlanName string `json:"vlan_name"`
-	Gateway  string `json:"gateway"` // SVI IP, e.g. "10.0.100.1"
-	Netmask  string `json:"netmask"` // e.g. "255.255.255.0"
-	VRF      string `json:"vrf"`     // VRF name, empty = no VRF
-	DryRun   bool   `json:"dry_run"`
+	SwitchIP     string `json:"switch_ip"`
+	SSHUser      string `json:"ssh_user"`
+	SSHPass      string `json:"ssh_pass"`
+	SSHPort      int    `json:"ssh_port"`
+	Vendor       string `json:"vendor"`
+	VlanID       int    `json:"vlan_id"`
+	VlanName     string `json:"vlan_name"`
+	Gateway      string `json:"gateway"`        // SVI IP, e.g. "10.0.100.1"
+	Netmask      string `json:"netmask"`        // e.g. "255.255.255.0"
+	VRF          string `json:"vrf"`            // VRF name, empty = no VRF
+	DHCPServerIP string `json:"dhcp_server_ip"` // DHCP server IP for relay on SVI
+	DryRun       bool   `json:"dry_run"`
 }
 
 type vlanProvisionStep struct {
@@ -765,6 +842,10 @@ func generateAristaVLANProvision(p *SwitchVLANProvisionPayload) []vlanProvisionS
 			sviCmds = append(sviCmds, fmt.Sprintf("vrf %s", p.VRF))
 		}
 		sviCmds = append(sviCmds, fmt.Sprintf("ip address %s/%d", p.Gateway, prefix), "no shutdown")
+		// DHCP relay on SVI
+		if p.DHCPServerIP != "" {
+			sviCmds = append(sviCmds, fmt.Sprintf("ip helper-address %s", p.DHCPServerIP))
+		}
 		steps = append(steps, vlanProvisionStep{
 			Action:   "create_svi",
 			Commands: sviCmds,
@@ -800,7 +881,12 @@ func generateNXOSVLANProvision(p *SwitchVLANProvisionPayload) []vlanProvisionSte
 		if p.VRF != "" {
 			sviCmds = append(sviCmds, fmt.Sprintf("vrf member %s", p.VRF))
 		}
-		sviCmds = append(sviCmds, fmt.Sprintf("ip address %s %s", p.Gateway, p.Netmask), "no shutdown", "exit")
+		sviCmds = append(sviCmds, fmt.Sprintf("ip address %s %s", p.Gateway, p.Netmask), "no shutdown")
+		// DHCP relay on SVI
+		if p.DHCPServerIP != "" {
+			sviCmds = append(sviCmds, fmt.Sprintf("ip dhcp relay address %s", p.DHCPServerIP))
+		}
+		sviCmds = append(sviCmds, "exit")
 		steps = append(steps, vlanProvisionStep{
 			Action:   "create_svi",
 			Commands: sviCmds,
@@ -836,7 +922,12 @@ func generateIOSVLANProvision(p *SwitchVLANProvisionPayload) []vlanProvisionStep
 		if p.VRF != "" {
 			sviCmds = append(sviCmds, fmt.Sprintf("vrf forwarding %s", p.VRF))
 		}
-		sviCmds = append(sviCmds, fmt.Sprintf("ip address %s %s", p.Gateway, p.Netmask), "no shutdown", "exit")
+		sviCmds = append(sviCmds, fmt.Sprintf("ip address %s %s", p.Gateway, p.Netmask), "no shutdown")
+		// DHCP relay on SVI
+		if p.DHCPServerIP != "" {
+			sviCmds = append(sviCmds, fmt.Sprintf("ip helper-address %s", p.DHCPServerIP))
+		}
+		sviCmds = append(sviCmds, "exit")
 		steps = append(steps, vlanProvisionStep{
 			Action:   "create_svi",
 			Commands: sviCmds,

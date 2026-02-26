@@ -263,7 +263,7 @@ func (s *IPService) provisionServerPort(ctx context.Context, poolID uuid.UUID, s
 	if vlanAction != domain.VLANActionSkip && pool.VlanID > 0 {
 		for _, port := range ports {
 			result, err := s.switchSvc.ProvisionVLANInfra(ctx, port.SwitchID,
-				pool.VlanID, pool.Description, pool.Gateway, pool.Netmask, pool.VRF,
+				pool.VlanID, pool.Description, pool.Gateway, pool.Netmask, pool.VRF, pool.DHCPServerIP,
 				vlanAction == domain.VLANActionPreview)
 			if result != nil {
 				allSteps = append(allSteps, result.Steps...)

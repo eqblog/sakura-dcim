@@ -66,6 +66,7 @@ type IPPool struct {
 	NativeVlanID     int        `json:"native_vlan_id" db:"native_vlan_id"`
 	TrunkVlans       string     `json:"trunk_vlans" db:"trunk_vlans"`
 	VlanAllocation   string     `json:"vlan_allocation" db:"vlan_allocation"` // "fixed" or "auto_range"
+	DHCPServerIP     string     `json:"dhcp_server_ip" db:"dhcp_server_ip"` // DHCP server IP for relay on SVI
 	ParentID         *uuid.UUID `json:"parent_id,omitempty" db:"parent_id"`
 	PoolType         string     `json:"pool_type" db:"pool_type"` // "ip_pool" or "subnet"
 	TotalIPs         int        `json:"total_ips" db:"-"`
