@@ -117,6 +117,7 @@ type IPAddressRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.IPAddress, error)
 	ListByPoolID(ctx context.Context, poolID uuid.UUID) ([]domain.IPAddress, error)
 	ListByServerID(ctx context.Context, serverID uuid.UUID) ([]domain.IPAddress, error)
+	CountAssignedByPoolAndServer(ctx context.Context, poolID uuid.UUID, serverID uuid.UUID) (int, error)
 	Update(ctx context.Context, addr *domain.IPAddress) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	GetNextAvailable(ctx context.Context, poolID uuid.UUID) (*domain.IPAddress, error)

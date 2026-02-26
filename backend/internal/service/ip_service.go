@@ -184,9 +184,12 @@ func (s *IPService) UpdateAddress(ctx context.Context, id uuid.UUID, req *domain
 		return nil, err
 	}
 
-	// Switch automation: unprovision when IP is unassigned from a server
+	// Switch automation: unprovision when IP is unassigned from a server (only if last IP from this pool)
 	if oldStatus == "assigned" && addr.Status != "assigned" && oldServerID != nil {
-		s.unprovisionServerPort(ctx, addr.PoolID, *oldServerID)
+		remaining, err := s.addrRepo.CountAssignedByPoolAndServer(ctx, addr.PoolID, *oldServerID)
+		if err == nil && remaining == 0 {
+			s.unprovisionServerPort(ctx, addr.PoolID, *oldServerID)
+		}
 	}
 	// Switch automation: provision when IP is newly assigned to a server
 	if addr.Status == "assigned" && addr.ServerID != nil && (oldStatus != "assigned" || oldServerID == nil) {
@@ -197,12 +200,21 @@ func (s *IPService) UpdateAddress(ctx context.Context, id uuid.UUID, req *domain
 }
 
 func (s *IPService) DeleteAddress(ctx context.Context, id uuid.UUID) error {
-	// Unprovision switch port if the address was assigned
+	// Check if we need to unprovision switch port (only if this is the last assigned IP from this pool for the server)
 	addr, err := s.addrRepo.GetByID(ctx, id)
+	shouldUnprovision := false
 	if err == nil && addr.Status == "assigned" && addr.ServerID != nil {
+		remaining, countErr := s.addrRepo.CountAssignedByPoolAndServer(ctx, addr.PoolID, *addr.ServerID)
+		// remaining includes this IP (not yet deleted), so unprovision only if it's the last one (count == 1)
+		shouldUnprovision = countErr == nil && remaining <= 1
+	}
+	if delErr := s.addrRepo.Delete(ctx, id); delErr != nil {
+		return delErr
+	}
+	if shouldUnprovision {
 		s.unprovisionServerPort(ctx, addr.PoolID, *addr.ServerID)
 	}
-	return s.addrRepo.Delete(ctx, id)
+	return nil
 }
 
 // AssignNextAvailable assigns the next available IP from a pool to a server.

@@ -81,6 +81,14 @@ func (r *IPAddressRepo) ListByServerID(ctx context.Context, serverID uuid.UUID) 
 	return addrs, rows.Err()
 }
 
+func (r *IPAddressRepo) CountAssignedByPoolAndServer(ctx context.Context, poolID uuid.UUID, serverID uuid.UUID) (int, error) {
+	var count int
+	err := r.db.QueryRow(ctx,
+		`SELECT COUNT(*) FROM ip_addresses WHERE pool_id = $1 AND server_id = $2 AND status = 'assigned'`,
+		poolID, serverID).Scan(&count)
+	return count, err
+}
+
 func (r *IPAddressRepo) Update(ctx context.Context, addr *domain.IPAddress) error {
 	_, err := r.db.Exec(ctx,
 		`UPDATE ip_addresses SET server_id = $2, status = $3, note = $4
