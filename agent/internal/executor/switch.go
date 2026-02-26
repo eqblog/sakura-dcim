@@ -60,7 +60,87 @@ type SwitchStatusPayload struct {
 	PortIndex     int    `json:"port_index"`
 }
 
+// portConfig holds parsed values from `show running-config interface`.
+type portConfig struct {
+	Description string
+	Mode        string // "access", "trunk", or ""
+	AccessVlan  int
+	NativeVlan  int
+	TrunkVlans  string
+	Shutdown    bool
+	Switchport  bool
+}
+
+// parsePortConfig extracts key settings from `show running-config interface` output.
+func parsePortConfig(output string) portConfig {
+	var cfg portConfig
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "description "):
+			cfg.Description = strings.TrimPrefix(line, "description ")
+		case line == "switchport":
+			cfg.Switchport = true
+		case line == "switchport mode access":
+			cfg.Mode = "access"
+		case line == "switchport mode trunk":
+			cfg.Mode = "trunk"
+		case strings.HasPrefix(line, "switchport access vlan "):
+			fmt.Sscanf(line, "switchport access vlan %d", &cfg.AccessVlan)
+		case strings.HasPrefix(line, "switchport trunk native vlan "):
+			fmt.Sscanf(line, "switchport trunk native vlan %d", &cfg.NativeVlan)
+		case strings.HasPrefix(line, "switchport trunk allowed vlan "):
+			cfg.TrunkVlans = strings.TrimPrefix(line, "switchport trunk allowed vlan ")
+		case line == "shutdown":
+			cfg.Shutdown = true
+		}
+	}
+	return cfg
+}
+
+// portNeedsChange returns true if any desired setting differs from current config.
+func portNeedsChange(desired *SwitchProvisionPayload, current portConfig) bool {
+	// Check description
+	if desired.Description != "" && desired.Description != current.Description {
+		return true
+	}
+	// Check port mode and VLANs
+	switch desired.PortMode {
+	case "access":
+		if current.Mode != "access" {
+			return true
+		}
+		if desired.VlanID > 0 && desired.VlanID != current.AccessVlan {
+			return true
+		}
+	case "trunk":
+		if current.Mode != "trunk" {
+			return true
+		}
+		if desired.TrunkVlans != "" && desired.TrunkVlans != current.TrunkVlans {
+			return true
+		}
+	case "trunk_native":
+		if current.Mode != "trunk" {
+			return true
+		}
+		if desired.NativeVlanID > 0 && desired.NativeVlanID != current.NativeVlan {
+			return true
+		}
+		if desired.TrunkVlans != "" && desired.TrunkVlans != current.TrunkVlans {
+			return true
+		}
+	}
+	// Check admin status
+	desiredDown := desired.AdminStatus == "down"
+	if desiredDown != current.Shutdown {
+		return true
+	}
+	return false
+}
+
 // HandleSwitchProvision configures a switch port via SSH.
+// It first queries the current config and only applies changes if needed.
 func (e *SwitchExecutor) HandleSwitchProvision(raw json.RawMessage) (interface{}, error) {
 	var p SwitchProvisionPayload
 	if err := json.Unmarshal(raw, &p); err != nil {
@@ -73,6 +153,35 @@ func (e *SwitchExecutor) HandleSwitchProvision(raw json.RawMessage) (interface{}
 		zap.Int("vlan", p.VlanID),
 	)
 
+	// Step 1: Query current port configuration
+	showCmd := generateShowRunInterfaceCmd(p.Vendor, p.PortName)
+	if showCmd != "" {
+		showOutput, err := e.execSSH(p.SwitchIP, p.SSHPort, p.SSHUser, p.SSHPass, []string{showCmd})
+		if err == nil {
+			current := parsePortConfig(showOutput)
+			e.logger.Info("current port config",
+				zap.String("port", p.PortName),
+				zap.String("mode", current.Mode),
+				zap.Int("access_vlan", current.AccessVlan),
+				zap.Int("native_vlan", current.NativeVlan),
+				zap.String("trunk_vlans", current.TrunkVlans),
+				zap.Bool("shutdown", current.Shutdown),
+			)
+			if !portNeedsChange(&p, current) {
+				e.logger.Info("port already configured as desired, skipping",
+					zap.String("port", p.PortName))
+				return map[string]string{
+					"status": "no_change",
+					"output": "port already configured as desired",
+				}, nil
+			}
+		} else {
+			e.logger.Warn("failed to query current port config, proceeding with full provision",
+				zap.String("port", p.PortName), zap.Error(err))
+		}
+	}
+
+	// Step 2: Generate and apply provision commands
 	commands := generateProvisionCommands(p.Vendor, &p)
 	if len(commands) == 0 {
 		return nil, fmt.Errorf("unsupported vendor: %s", p.Vendor)
@@ -87,6 +196,20 @@ func (e *SwitchExecutor) HandleSwitchProvision(raw json.RawMessage) (interface{}
 		"status": "provisioned",
 		"output": output,
 	}, nil
+}
+
+// generateShowRunInterfaceCmd returns the vendor-specific command to show interface running config.
+func generateShowRunInterfaceCmd(vendor, portName string) string {
+	switch normalizeVendor(vendor) {
+	case "cisco_ios", "cisco_nxos":
+		return fmt.Sprintf("show running-config interface %s", portName)
+	case "arista_eos":
+		return fmt.Sprintf("show running-config interfaces %s", portName)
+	case "junos":
+		return fmt.Sprintf("show configuration interfaces %s", portName)
+	default:
+		return ""
+	}
 }
 
 // HandleSwitchStatus queries switch port status via SSH.
@@ -254,25 +377,23 @@ func (e *SwitchExecutor) execSSH(host string, port int, user, pass string, comma
 		return "", fmt.Errorf("start shell: %w", err)
 	}
 
-	// Wait for shell prompt to appear
-	time.Sleep(1 * time.Second)
-
-	// Disable terminal paging so output doesn't block on --More-- prompts
-	fmt.Fprintf(stdin, "terminal length 0\n")
+	// Wait briefly for shell prompt, then batch-send all commands.
+	// SSH/TCP provides flow control so the switch will buffer and process
+	// commands in order — no per-command delays needed.
 	time.Sleep(500 * time.Millisecond)
 
-	// Send commands one by one with a delay for the switch to process
+	// Build command batch: disable paging + user commands + exit
+	var batch strings.Builder
+	batch.WriteString("terminal length 0\n")
 	for _, cmd := range commands {
-		fmt.Fprintf(stdin, "%s\n", cmd)
-		time.Sleep(500 * time.Millisecond)
+		batch.WriteString(cmd)
+		batch.WriteByte('\n')
 	}
+	batch.WriteString("exit\n")
+	fmt.Fprint(stdin, batch.String())
 
-	// Wait for last command to finish (write memory / copy run start can be slow)
-	time.Sleep(2 * time.Second)
-
-	// Send exit and close stdin
-	fmt.Fprintf(stdin, "exit\n")
-	time.Sleep(500 * time.Millisecond)
+	// Small delay to let the shell read from stdin buffer, then close
+	time.Sleep(100 * time.Millisecond)
 	stdin.Close()
 
 	// Wait for session to complete (with timeout)
