@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Card, Tabs, Button, Spin, Typography, Tag, Space, message } from 'antd';
+import { Card, Tabs, Button, Spin, Typography, Tag, Space, message, theme } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { serverAPI } from '../../api';
 import type { Server, ServerStatus } from '../../types';
@@ -15,7 +15,7 @@ import InventoryTab from './tabs/InventoryTab';
 import IPTab from './tabs/IPTab';
 import ProvisionTab from './tabs/ProvisionTab';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 const statusColors: Record<ServerStatus, string> = {
   active: 'green',
@@ -28,6 +28,7 @@ const statusColors: Record<ServerStatus, string> = {
 const ServerDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { token } = theme.useToken();
   const [searchParams, setSearchParams] = useSearchParams();
   const [server, setServer] = useState<Server | null>(null);
   const [loading, setLoading] = useState(true);
@@ -97,16 +98,37 @@ const ServerDetailPage: React.FC = () => {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/servers')}>
-          Back
-        </Button>
-        <Space>
-          <Title level={4} style={{ margin: 0 }}>
-            {server.hostname || server.label || server.id}
-          </Title>
-          <Tag color={statusColors[server.status]}>{server.status.toUpperCase()}</Tag>
-        </Space>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 16,
+          marginBottom: 24,
+          paddingBottom: 16,
+          borderBottom: `1px solid ${token.colorBorderSecondary}`,
+        }}
+      >
+        <Button
+          icon={<ArrowLeftOutlined />}
+          onClick={() => navigate('/servers')}
+          type="text"
+        />
+        <div style={{ flex: 1 }}>
+          <Space align="center">
+            <Title level={4} style={{ margin: 0 }}>
+              {server.hostname || server.label || server.id}
+            </Title>
+            <Tag color={statusColors[server.status]}>{server.status.toUpperCase()}</Tag>
+          </Space>
+          {server.primary_ip && (
+            <div>
+              <Text type="secondary" style={{ fontSize: 13 }}>
+                {server.primary_ip}
+                {server.label && server.hostname ? ` — ${server.label}` : ''}
+              </Text>
+            </div>
+          )}
+        </div>
       </div>
 
       <Card>

@@ -170,8 +170,7 @@ const AppLayout: React.FC = () => {
           left: 0,
           top: 0,
           bottom: 0,
-          background: token.colorBgContainer,
-          borderRight: `1px solid ${token.colorBorderSecondary}`,
+          background: '#001529',
         }}
       >
         <div
@@ -181,7 +180,7 @@ const AppLayout: React.FC = () => {
             alignItems: 'center',
             justifyContent: collapsed ? 'center' : 'flex-start',
             padding: collapsed ? '0' : '0 24px',
-            borderBottom: `1px solid ${token.colorBorderSecondary}`,
+            borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
           }}
         >
           {branding.logo_url ? (
@@ -190,12 +189,13 @@ const AppLayout: React.FC = () => {
             <CloudServerOutlined style={{ fontSize: 24, color: token.colorPrimary }} />
           )}
           {!collapsed && (
-            <Text strong style={{ marginLeft: 12, fontSize: 18 }}>
+            <Text strong style={{ marginLeft: 12, fontSize: 18, color: '#ffffff' }}>
               {branding.name || 'Sakura DCIM'}
             </Text>
           )}
         </div>
         <Menu
+          theme="dark"
           mode="inline"
           selectedKeys={[location.pathname]}
           defaultOpenKeys={['os-mgmt', 'network', 'users-group']}
@@ -209,11 +209,11 @@ const AppLayout: React.FC = () => {
         <Header
           style={{
             padding: '0 24px',
-            background: token.colorBgContainer,
+            background: '#ffffff',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            borderBottom: `1px solid ${token.colorBorderSecondary}`,
+            boxShadow: '0 1px 4px rgba(0, 21, 41, 0.08)',
             position: 'sticky',
             top: 0,
             zIndex: 1,

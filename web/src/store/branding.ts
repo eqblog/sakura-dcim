@@ -20,7 +20,7 @@ interface BrandingState {
 
 const defaultBranding: BrandingInfo = {
   name: 'Sakura DCIM',
-  primary_color: '#667eea',
+  primary_color: '#1677ff',
 };
 
 export const useBrandingStore = create<BrandingState>((set) => ({

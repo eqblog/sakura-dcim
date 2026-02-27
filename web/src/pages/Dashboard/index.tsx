@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Row, Col, Card, Statistic, Typography, Tag, Table, Space } from 'antd';
+import { Row, Col, Card, Statistic, Typography, Tag, Table, Space, theme } from 'antd';
 import {
   CloudServerOutlined,
   ApiOutlined,
@@ -11,7 +11,7 @@ import {
 import { serverAPI, agentAPI } from '../../api';
 import type { Server, Agent } from '../../types';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 const statusColors: Record<string, string> = {
   active: 'green',
@@ -26,6 +26,7 @@ const DashboardPage: React.FC = () => {
   const [servers, setServers] = useState<Server[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
+  const { token } = theme.useToken();
 
   useEffect(() => {
     fetchData();
@@ -84,47 +85,63 @@ const DashboardPage: React.FC = () => {
 
   return (
     <div>
-      <Title level={4}>Dashboard</Title>
+      <div style={{ marginBottom: 24 }}>
+        <Title level={4} style={{ margin: 0 }}>Dashboard</Title>
+        <Text type="secondary">Infrastructure overview</Text>
+      </div>
 
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
           <Card>
-            <Statistic
-              title="Total Servers"
-              value={serverStats.total}
-              prefix={<CloudServerOutlined />}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div className="stat-icon stat-icon--primary">
+                <CloudServerOutlined />
+              </div>
+              <Statistic title="Total Servers" value={serverStats.total} />
+            </div>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card>
-            <Statistic
-              title="Active Servers"
-              value={serverStats.active}
-              prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
-              valueStyle={{ color: '#52c41a' }}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div className="stat-icon stat-icon--success">
+                <CheckCircleOutlined />
+              </div>
+              <Statistic
+                title="Active Servers"
+                value={serverStats.active}
+                valueStyle={{ color: token.colorSuccess }}
+              />
+            </div>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card>
-            <Statistic
-              title="Agents Online"
-              value={agentStats.online}
-              suffix={`/ ${agentStats.total}`}
-              prefix={<ApiOutlined style={{ color: '#1890ff' }} />}
-              valueStyle={{ color: '#1890ff' }}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div className="stat-icon stat-icon--info">
+                <ApiOutlined />
+              </div>
+              <Statistic
+                title="Agents Online"
+                value={agentStats.online}
+                suffix={`/ ${agentStats.total}`}
+                valueStyle={{ color: token.colorPrimary }}
+              />
+            </div>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card>
-            <Statistic
-              title="Issues"
-              value={serverStats.error + serverStats.offline}
-              prefix={<WarningOutlined style={{ color: serverStats.error > 0 ? '#ff4d4f' : '#d9d9d9' }} />}
-              valueStyle={{ color: serverStats.error > 0 ? '#ff4d4f' : undefined }}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div className={`stat-icon ${serverStats.error > 0 ? 'stat-icon--danger' : 'stat-icon--warning'}`}>
+                <WarningOutlined />
+              </div>
+              <Statistic
+                title="Issues"
+                value={serverStats.error + serverStats.offline}
+                valueStyle={{ color: serverStats.error > 0 ? token.colorError : undefined }}
+              />
+            </div>
           </Card>
         </Col>
       </Row>
@@ -152,13 +169,13 @@ const DashboardPage: React.FC = () => {
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    padding: '8px 0',
-                    borderBottom: '1px solid #f0f0f0',
+                    padding: '10px 0',
+                    borderBottom: `1px solid ${token.colorBorderSecondary}`,
                   }}
                 >
                   <div>
                     <div style={{ fontWeight: 500 }}>{agent.name}</div>
-                    <div style={{ fontSize: 12, color: '#999' }}>{agent.location}</div>
+                    <div style={{ fontSize: 12, color: token.colorTextTertiary }}>{agent.location}</div>
                   </div>
                   <Tag
                     icon={agent.status === 'online' ? <SyncOutlined spin /> : <CloseCircleOutlined />}
@@ -169,7 +186,7 @@ const DashboardPage: React.FC = () => {
                 </div>
               ))}
               {agents.length === 0 && !loading && (
-                <div style={{ textAlign: 'center', color: '#999', padding: 20 }}>
+                <div style={{ textAlign: 'center', color: token.colorTextTertiary, padding: 20 }}>
                   No agents registered
                 </div>
               )}

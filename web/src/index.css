@@ -1,0 +1,148 @@
+/* ========================================
+   Sakura DCIM — Global Styles
+   ======================================== */
+
+/* --- Font Smoothing --- */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* --- Card hover lift effect --- */
+.ant-card {
+  transition: box-shadow 0.3s ease;
+}
+
+.ant-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 21, 41, 0.12) !important;
+}
+
+/* Opt-out for cards inside modals, drawers, and tabs */
+.ant-modal .ant-card:hover,
+.ant-drawer .ant-card:hover,
+.ant-tabs-content .ant-card:hover {
+  box-shadow: none !important;
+}
+
+/* --- Table row transition --- */
+.ant-table-tbody > tr {
+  transition: background-color 0.2s ease;
+}
+
+/* --- Custom scrollbar (global) --- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/* Dark sidebar scrollbar */
+.ant-layout-sider ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.ant-layout-sider ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.ant-layout-sider ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+
+.ant-layout-sider * {
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+/* --- Page content fade-in --- */
+.ant-layout-content > * {
+  animation: fadeIn 0.2s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --- Sidebar menu polish --- */
+.ant-menu-dark .ant-menu-item,
+.ant-menu-dark .ant-menu-submenu-title {
+  margin: 2px 8px !important;
+  border-radius: 6px !important;
+}
+
+.ant-menu-dark .ant-menu-item-selected {
+  box-shadow: 0 0 12px rgba(22, 119, 255, 0.3);
+}
+
+/* --- Stat card icon containers (Dashboard) --- */
+.stat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.stat-icon--primary {
+  background: rgba(22, 119, 255, 0.1);
+  color: #1677ff;
+}
+
+.stat-icon--success {
+  background: rgba(82, 196, 26, 0.1);
+  color: #52c41a;
+}
+
+.stat-icon--info {
+  background: rgba(22, 119, 255, 0.1);
+  color: #1677ff;
+}
+
+.stat-icon--warning {
+  background: rgba(250, 173, 20, 0.1);
+  color: #faad14;
+}
+
+.stat-icon--danger {
+  background: rgba(255, 77, 79, 0.1);
+  color: #ff4d4f;
+}
+
+/* --- Selection color --- */
+::selection {
+  background: rgba(22, 119, 255, 0.2);
+  color: inherit;
+}
+
+/* --- Descriptions label weight --- */
+.ant-descriptions-item-label {
+  font-weight: 500;
+}

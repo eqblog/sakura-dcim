@@ -12,7 +12,7 @@ const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { login } = useAuthStore();
   const { branding } = useBrandingStore();
-  const primaryColor = branding.primary_color || '#667eea';
+  const primaryColor = branding.primary_color || '#1677ff';
 
   const onFinish = async (values: { email: string; password: string }) => {
     setLoading(true);
@@ -34,14 +34,15 @@ const LoginPage: React.FC = () => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: `linear-gradient(135deg, ${primaryColor} 0%, #764ba2 100%)`,
+        background: `linear-gradient(135deg, ${primaryColor} 0%, #001529 100%)`,
       }}
     >
       <Card
         style={{
           width: 400,
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+          boxShadow: '0 8px 32px rgba(0, 21, 41, 0.3)',
           borderRadius: 12,
+          border: 'none',
         }}
       >
         <Space direction="vertical" align="center" style={{ width: '100%', marginBottom: 32 }}>

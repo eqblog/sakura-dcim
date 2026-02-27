@@ -51,8 +51,48 @@ const App: React.FC = () => {
       theme={{
         algorithm: theme.defaultAlgorithm,
         token: {
-          colorPrimary: branding.primary_color || '#667eea',
-          borderRadius: 6,
+          colorPrimary: branding.primary_color || '#1677ff',
+          colorBgLayout: '#f0f2f5',
+          borderRadius: 8,
+          boxShadow: '0 2px 8px rgba(0, 21, 41, 0.08)',
+          boxShadowSecondary: '0 4px 16px rgba(0, 21, 41, 0.12)',
+          colorLink: branding.primary_color || '#1677ff',
+          colorLinkHover: '#4096ff',
+        },
+        components: {
+          Card: {
+            boxShadowTertiary: '0 1px 4px rgba(0, 21, 41, 0.08)',
+          },
+          Table: {
+            rowHoverBg: '#e6f4ff',
+            headerBg: '#fafafa',
+          },
+          Menu: {
+            darkItemBg: '#001529',
+            darkSubMenuItemBg: '#000c17',
+            darkItemSelectedBg: branding.primary_color || '#1677ff',
+            darkItemHoverBg: 'rgba(255, 255, 255, 0.08)',
+            darkItemColor: 'rgba(255, 255, 255, 0.65)',
+            darkItemSelectedColor: '#ffffff',
+            darkGroupTitleColor: 'rgba(255, 255, 255, 0.45)',
+            itemHeight: 44,
+          },
+          Layout: {
+            siderBg: '#001529',
+            headerBg: '#ffffff',
+            bodyBg: '#f0f2f5',
+          },
+          Button: {
+            primaryShadow: '0 2px 4px rgba(22, 119, 255, 0.3)',
+          },
+          Input: {
+            activeShadow: '0 0 0 2px rgba(22, 119, 255, 0.1)',
+          },
+          Tabs: {
+            inkBarColor: branding.primary_color || '#1677ff',
+            itemActiveColor: branding.primary_color || '#1677ff',
+            itemSelectedColor: branding.primary_color || '#1677ff',
+          },
         },
       }}
     >

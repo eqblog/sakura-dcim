@@ -202,8 +202,11 @@ const ServerListPage: React.FC = () => {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>Servers</Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <div>
+          <Title level={4} style={{ margin: 0 }}>Servers</Title>
+          <Typography.Text type="secondary" style={{ fontSize: 13 }}>Manage your dedicated server infrastructure</Typography.Text>
+        </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
           Add Server
         </Button>
