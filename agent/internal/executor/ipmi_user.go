@@ -305,13 +305,39 @@ func generateTempUsername() string {
 	return "kvm-" + hex.EncodeToString(b)
 }
 
-// generateTempPassword returns a 16-character random alphanumeric password.
+// generateTempPassword returns a 16-character random password that satisfies
+// strict BMC password policies (HP iLO, Lenovo XCC, Huawei iBMC).
+// Guarantees at least one uppercase, one lowercase, one digit, and one special char.
 func generateTempPassword() string {
-	const charset = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	const (
+		lower   = "abcdefghijkmnpqrstuvwxyz"
+		upper   = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+		digits  = "23456789"
+		special = "!@#$&*-_=+"
+		all     = lower + upper + digits + special
+	)
+
 	b := make([]byte, 16)
 	rand.Read(b)
-	for i := range b {
-		b[i] = charset[int(b[i])%len(charset)]
+
+	// Place one guaranteed character from each required category
+	b[0] = lower[int(b[0])%len(lower)]
+	b[1] = upper[int(b[1])%len(upper)]
+	b[2] = digits[int(b[2])%len(digits)]
+	b[3] = special[int(b[3])%len(special)]
+
+	// Fill remaining positions from full charset
+	for i := 4; i < len(b); i++ {
+		b[i] = all[int(b[i])%len(all)]
 	}
+
+	// Shuffle to avoid predictable positions (Fisher-Yates)
+	entropy := make([]byte, 16)
+	rand.Read(entropy)
+	for i := len(b) - 1; i > 0; i-- {
+		j := int(entropy[i]) % (i + 1)
+		b[i], b[j] = b[j], b[i]
+	}
+
 	return string(b)
 }
