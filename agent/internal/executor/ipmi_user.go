@@ -44,10 +44,36 @@ func (e *IPMIExecutor) HandleCreateTempUser(raw json.RawMessage) (interface{}, e
 		p.Privilege = 3 // default to Operator
 	}
 
-	// 1. List existing users to find a free slot
+	// 1. List existing users to find a free slot and clean orphans
 	listOut, err := e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass, "user", "list")
 	if err != nil {
 		return nil, fmt.Errorf("user list failed: %w", err)
+	}
+
+	// 1b. Clean up orphaned kvm-* users from previous sessions
+	orphans := findOrphanedKVMUsers(listOut)
+	for _, slot := range orphans {
+		slotStr := strconv.Itoa(slot)
+		e.logger.Info("cleaning orphaned kvm temp user", zap.String("ip", p.IPMIIP), zap.Int("slot", slot))
+		e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass, "user", "disable", slotStr)
+		// Remove channel access on both channels
+		for _, ch := range []string{"1", "2"} {
+			e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass,
+				"channel", "setaccess", ch, slotStr,
+				"callin=off", "ipmi=off", "link=off", "privilege=1")
+			e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass,
+				"user", "priv", slotStr, "1", ch)
+		}
+		e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass, "user", "set", "password", slotStr, "")
+		e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass, "user", "set", "name", slotStr, "")
+	}
+
+	// Re-list after cleanup if we cleaned anything
+	if len(orphans) > 0 {
+		listOut, err = e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass, "user", "list")
+		if err != nil {
+			return nil, fmt.Errorf("user list failed after cleanup: %w", err)
+		}
 	}
 
 	freeSlot := findFreeUserSlot(listOut)
@@ -73,7 +99,6 @@ func (e *IPMIExecutor) HandleCreateTempUser(raw json.RawMessage) (interface{}, e
 
 	// 4. Set password
 	if _, err := e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass, "user", "set", "password", slotStr, password); err != nil {
-		// Rollback: clear the username we just set
 		e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass, "user", "set", "name", slotStr, "")
 		return nil, fmt.Errorf("set password (slot %d): %w", freeSlot, err)
 	}
@@ -84,49 +109,45 @@ func (e *IPMIExecutor) HandleCreateTempUser(raw json.RawMessage) (interface{}, e
 		return nil, fmt.Errorf("enable user (slot %d): %w", freeSlot, err)
 	}
 
-	// 6. Set channel access + user privilege (try multiple methods for BMC compatibility)
+	// 6. Set channel access on ALL LAN channels (1 and 2).
+	// Each key=value must be a separate argument for ipmitool.
+	// We try both channels without breaking — iDRAC needs both channel setaccess
+	// (sets User Role) and user priv (sets IPMI LAN Privilege).
 	privStr := strconv.Itoa(p.Privilege)
 	channelAccessOK := false
-
-	// Try LAN channels 1 and 2 (most BMCs use 1, some use 2)
 	for _, ch := range []string{"1", "2"} {
-		// Method 1: channel setaccess with combined args
-		if _, err := e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass,
-			"channel", "setaccess", ch, slotStr,
-			fmt.Sprintf("callin=on ipmi=on link=on privilege=%s", privStr)); err == nil {
-			e.logger.Info("channel setaccess succeeded", zap.String("channel", ch), zap.Int("slot", freeSlot))
-			channelAccessOK = true
-			break
-		}
-		// Method 2: channel setaccess with split args
 		if _, err := e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass,
 			"channel", "setaccess", ch, slotStr,
 			"callin=on", "ipmi=on", "link=on", "privilege="+privStr); err == nil {
-			e.logger.Info("channel setaccess (split args) succeeded", zap.String("channel", ch), zap.Int("slot", freeSlot))
+			e.logger.Info("channel setaccess succeeded", zap.String("channel", ch), zap.Int("slot", freeSlot))
 			channelAccessOK = true
-			break
+			// Don't break — apply to all channels for maximum compatibility
+		} else {
+			e.logger.Debug("channel setaccess failed", zap.String("channel", ch), zap.Error(err))
 		}
 	}
 
-	if !channelAccessOK {
-		e.logger.Warn("channel setaccess failed on all channels, will rely on user priv",
-			zap.Int("slot", freeSlot))
-	}
-
-	// 7. Set user privilege level (required by Dell iDRAC and some other BMCs)
-	// This is separate from channel setaccess and is critical for iDRAC login.
+	// 7. Set user privilege level on ALL channels.
+	// Required by Dell iDRAC and some other BMCs — separate from channel setaccess.
 	userPrivOK := false
 	for _, ch := range []string{"1", "2"} {
 		if _, err := e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass,
 			"user", "priv", slotStr, privStr, ch); err == nil {
 			e.logger.Info("user priv succeeded", zap.String("channel", ch), zap.Int("slot", freeSlot))
 			userPrivOK = true
-			break
+			// Don't break — apply to all channels
+		} else {
+			e.logger.Debug("user priv failed", zap.String("channel", ch), zap.Error(err))
 		}
 	}
 
+	// 8. Enable SOL payload access (needed for Serial-Over-LAN on some BMCs)
+	for _, ch := range []string{"1", "2"} {
+		e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass,
+			"sol", "payload", "enable", ch, slotStr)
+	}
+
 	if !channelAccessOK && !userPrivOK {
-		// Both methods failed — user won't be able to login. Rollback.
 		e.logger.Error("failed to set any channel access or user privilege, rolling back user",
 			zap.Int("slot", freeSlot))
 		e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass, "user", "disable", slotStr)
@@ -138,6 +159,8 @@ func (e *IPMIExecutor) HandleCreateTempUser(raw json.RawMessage) (interface{}, e
 		zap.String("ip", p.IPMIIP),
 		zap.Int("slot", freeSlot),
 		zap.String("username", username),
+		zap.Bool("channelAccess", channelAccessOK),
+		zap.Bool("userPriv", userPrivOK),
 	)
 
 	return map[string]interface{}{
@@ -167,15 +190,27 @@ func (e *IPMIExecutor) HandleDeleteTempUser(raw json.RawMessage) (interface{}, e
 		zap.Int("slot", p.UserSlot),
 	)
 
-	// Disable user first
+	// 1. Disable user
 	if _, err := e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass, "user", "disable", slotStr); err != nil {
 		e.logger.Warn("disable user failed", zap.Int("slot", p.UserSlot), zap.Error(err))
 	}
 
-	// Clear username (effectively deletes the user)
+	// 2. Remove channel access and privilege on all channels
+	for _, ch := range []string{"1", "2"} {
+		e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass,
+			"channel", "setaccess", ch, slotStr,
+			"callin=off", "ipmi=off", "link=off", "privilege=1")
+		e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass,
+			"user", "priv", slotStr, "1", ch)
+	}
+
+	// 3. Clear password
+	e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass, "user", "set", "password", slotStr, "")
+
+	// 4. Clear username (effectively deletes the user)
 	if _, err := e.runIPMI(p.BMCType, p.IPMIIP, p.IPMIUser, p.IPMIPass, "user", "set", "name", slotStr, ""); err != nil {
-		e.logger.Warn("clear username failed", zap.Int("slot", p.UserSlot), zap.Error(err))
-		return nil, fmt.Errorf("clear username (slot %d): %w", p.UserSlot, err)
+		e.logger.Warn("clear username failed (user disabled but name remains)", zap.Int("slot", p.UserSlot), zap.Error(err))
+		// Don't fail — user is disabled and has no privileges, which is sufficient
 	}
 
 	e.logger.Info("temp IPMI user deleted",
@@ -231,6 +266,36 @@ func findFreeUserSlot(output string) int {
 		}
 	}
 	return -1
+}
+
+// findOrphanedKVMUsers parses `ipmitool user list` output and returns slot IDs
+// of users matching the "kvm-" prefix — these are orphaned temp users from
+// previous sessions that were not properly cleaned up (e.g. backend restart).
+func findOrphanedKVMUsers(output string) []int {
+	var orphans []int
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		id, err := strconv.Atoi(fields[0])
+		if err != nil {
+			continue
+		}
+		if id < 3 || id > 15 {
+			continue
+		}
+		name := fields[1]
+		if strings.HasPrefix(name, "kvm-") {
+			orphans = append(orphans, id)
+		}
+	}
+	return orphans
 }
 
 // generateTempUsername returns a username like "kvm-a1b2c3d4".
