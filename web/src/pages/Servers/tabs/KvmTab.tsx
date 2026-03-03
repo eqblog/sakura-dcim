@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { Button, Space, Alert, Spin, Tooltip, Input, Radio, Typography } from 'antd';
+import { Button, Space, Alert, Spin, Tooltip, Input, Tag, Typography } from 'antd';
 import {
   DesktopOutlined,
   FullscreenOutlined,
@@ -11,16 +11,13 @@ import {
 } from '@ant-design/icons';
 import { serverAPI } from '../../../api';
 import type { Server } from '../../../types';
+import { useAuthStore } from '../../../store/auth';
 import KvmCredentialsCard from './KvmCredentialsCard';
 
 // @ts-expect-error noVNC has no type declarations
 import RFB from '@novnc/novnc/lib/rfb';
 
 const { Text } = Typography;
-
-const KVM_MODE_KEY = 'sakura_kvm_mode';
-type KvmMode = 'webkvm' | 'vconsole';
-const getKvmMode = (): KvmMode => (localStorage.getItem(KVM_MODE_KEY) as KvmMode) || 'webkvm';
 
 const sendTextToVnc = (rfb: any, text: string) => {
   for (const char of text) rfb.sendKey(char.charCodeAt(0));
@@ -34,6 +31,8 @@ type KvmStatus = 'idle' | 'starting' | 'connecting' | 'connected' | 'error';
 
 const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
   const serverId = server.id;
+  const { user } = useAuthStore();
+  const kvmMode = user?.tenant?.kvm_mode || 'webkvm';
   const canvasRef = useRef<HTMLDivElement>(null);
   const rfbRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -45,7 +44,6 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
   const [tempPass, setTempPass] = useState<string>('');
   const [showPass, setShowPass] = useState(false);
   const [commandText, setCommandText] = useState('');
-  const [kvmMode, setKvmMode] = useState<KvmMode>(getKvmMode);
 
   const cleanup = useCallback(() => {
     if (rfbRef.current) { rfbRef.current.disconnect(); rfbRef.current = null; }
@@ -55,9 +53,8 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
   const startKvm = useCallback(async () => {
     setError(''); setStatus('starting');
     setTempUser(''); setTempPass(''); setShowPass(false);
-    const directConsole = kvmMode === 'vconsole';
     try {
-      const { data: resp } = await serverAPI.kvmStart(serverId, directConsole);
+      const { data: resp } = await serverAPI.kvmStart(serverId);
       if (!resp.success || !resp.data) throw new Error(resp.error || 'Failed to start KVM session');
       const data = resp.data as { session_id: string; temp_user?: string; temp_pass?: string };
       setSessionId(data.session_id);
@@ -65,7 +62,9 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
       setStatus('connecting');
       const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
       const wsUrl = `${wsProtocol}://${window.location.host}/api/v1/kvm/ws?session=${data.session_id}`;
-      await new Promise(r => setTimeout(r, 2000));
+      // Agent already verified VNC readiness (RFB handshake) before returning,
+      // so only a minimal delay is needed for the relay WebSocket to stabilise.
+      await new Promise(r => setTimeout(r, 500));
       if (!canvasRef.current) return;
       const rfb = new RFB(canvasRef.current, wsUrl, { scaleViewport: true, resizeSession: false });
       rfb.showDotCursor = true;
@@ -113,26 +112,21 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
     return () => { document.removeEventListener('fullscreenchange', handler); cleanup(); };
   }, [cleanup]);
 
-  const handleModeChange = (mode: KvmMode) => {
-    setKvmMode(mode);
-    localStorage.setItem(KVM_MODE_KEY, mode);
-  };
-
   const isIdle = status === 'idle' || status === 'error';
 
   return (
     <div ref={containerRef}>
       {isIdle && (
-        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Text type="secondary">Mode:</Text>
-          <Radio.Group value={kvmMode} onChange={(e) => handleModeChange(e.target.value)} size="small">
-            <Radio.Button value="webkvm">Web KVM</Radio.Button>
-            <Radio.Button value="vconsole">Direct vConsole</Radio.Button>
-          </Radio.Group>
+          <Tag color={kvmMode === 'vconsole' ? 'green' : 'blue'}>
+            {kvmMode === 'vconsole' ? 'Direct vConsole' : 'Web KVM'}
+          </Tag>
           <Text type="secondary" style={{ fontSize: 12 }}>
             {kvmMode === 'vconsole'
               ? 'Auto-navigates to BMC console after login'
               : 'Opens full BMC web UI'}
+            &nbsp;&mdash; set by admin in Settings
           </Text>
         </div>
       )}

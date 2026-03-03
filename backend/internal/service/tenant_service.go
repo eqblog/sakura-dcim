@@ -26,6 +26,7 @@ type TenantCreateRequest struct {
 	LogoURL      *string    `json:"logo_url"`
 	PrimaryColor *string    `json:"primary_color"`
 	FaviconURL   *string    `json:"favicon_url"`
+	KvmMode      *string    `json:"kvm_mode"`
 }
 
 type TenantUpdateRequest struct {
@@ -35,6 +36,7 @@ type TenantUpdateRequest struct {
 	LogoURL      *string `json:"logo_url"`
 	PrimaryColor *string `json:"primary_color"`
 	FaviconURL   *string `json:"favicon_url"`
+	KvmMode      *string `json:"kvm_mode"`
 }
 
 func (s *TenantService) Create(ctx context.Context, req *TenantCreateRequest) (*domain.Tenant, error) {
@@ -53,6 +55,10 @@ func (s *TenantService) Create(ctx context.Context, req *TenantCreateRequest) (*
 		LogoURL:      req.LogoURL,
 		PrimaryColor: req.PrimaryColor,
 		FaviconURL:   req.FaviconURL,
+		KvmMode:      "webkvm",
+	}
+	if req.KvmMode != nil && (*req.KvmMode == "webkvm" || *req.KvmMode == "vconsole") {
+		tenant.KvmMode = *req.KvmMode
 	}
 
 	if err := s.tenantRepo.Create(ctx, tenant); err != nil {
@@ -104,6 +110,9 @@ func (s *TenantService) Update(ctx context.Context, id uuid.UUID, req *TenantUpd
 	}
 	if req.FaviconURL != nil {
 		tenant.FaviconURL = req.FaviconURL
+	}
+	if req.KvmMode != nil && (*req.KvmMode == "webkvm" || *req.KvmMode == "vconsole") {
+		tenant.KvmMode = *req.KvmMode
 	}
 
 	if err := s.tenantRepo.Update(ctx, tenant); err != nil {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Typography, Form, Input, Button, ColorPicker, message, Space, Divider, Descriptions, Tag } from 'antd';
-import { SaveOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Card, Typography, Form, Input, Button, ColorPicker, message, Space, Divider, Descriptions, Tag, Radio } from 'antd';
+import { SaveOutlined, ReloadOutlined, DesktopOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth';
 import { useBrandingStore } from '../../store/branding';
 import { tenantAPI } from '../../api';
@@ -25,6 +25,7 @@ const SettingsPage: React.FC = () => {
         logo_url: tenant.logo_url || '',
         favicon_url: tenant.favicon_url || '',
         primary_color: tenant.primary_color || '#667eea',
+        kvm_mode: tenant.kvm_mode || 'webkvm',
       });
     }
   }, [tenant, form]);
@@ -124,6 +125,27 @@ const SettingsPage: React.FC = () => {
             <Input placeholder="panel.acme.com" />
           </Form.Item>
 
+          <Divider titlePlacement="start">KVM Console</Divider>
+
+          <Form.Item name="kvm_mode" label={<><DesktopOutlined style={{ marginRight: 4 }} />KVM Console Mode</>}>
+            <Radio.Group>
+              <Space direction="vertical">
+                <Radio value="webkvm">
+                  <Text strong>Web KVM (Full BMC)</Text>
+                  <Text type="secondary" style={{ display: 'block', marginLeft: 24, fontSize: 12 }}>
+                    Opens full BMC web UI. Users can navigate to any BMC feature.
+                  </Text>
+                </Radio>
+                <Radio value="vconsole">
+                  <Text strong>Direct vConsole</Text>
+                  <Text type="secondary" style={{ display: 'block', marginLeft: 24, fontSize: 12 }}>
+                    Auto-navigates to virtual console after login. Supports iDRAC, iLO, Supermicro, Lenovo XCC, Huawei iBMC.
+                  </Text>
+                </Radio>
+              </Space>
+            </Radio.Group>
+          </Form.Item>
+
           <Form.Item>
             <Space>
               <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saving}>
@@ -138,6 +160,7 @@ const SettingsPage: React.FC = () => {
                     logo_url: tenant.logo_url || '',
                     favicon_url: tenant.favicon_url || '',
                     primary_color: tenant.primary_color || '#667eea',
+                    kvm_mode: tenant.kvm_mode || 'webkvm',
                   });
                 }
               }}>

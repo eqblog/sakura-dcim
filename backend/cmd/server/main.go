@@ -97,7 +97,7 @@ func main() {
 	userService := service.NewUserService(userRepo, roleRepo)
 	roleService := service.NewRoleService(roleRepo)
 	tenantService := service.NewTenantService(tenantRepo)
-	kvmService := service.NewKVMService(serverRepo, hub, cfg, logger)
+	kvmService := service.NewKVMService(serverRepo, tenantRepo, hub, cfg, logger)
 	ipmiService := service.NewIPMIService(serverRepo, hub, cfg, logger)
 	osProfileService := service.NewOSProfileService(osProfileRepo)
 	diskLayoutService := service.NewDiskLayoutService(diskLayoutRepo)

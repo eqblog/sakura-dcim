@@ -36,6 +36,7 @@ export interface Tenant {
   logo_url?: string;
   primary_color?: string;
   favicon_url?: string;
+  kvm_mode?: string;
   created_at: string;
   updated_at: string;
 }

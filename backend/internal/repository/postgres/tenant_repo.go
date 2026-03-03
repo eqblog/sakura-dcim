@@ -21,11 +21,15 @@ func NewTenantRepo(db *pgxpool.Pool) *TenantRepo {
 
 func (r *TenantRepo) Create(ctx context.Context, tenant *domain.Tenant) error {
 	now := time.Now()
-	query := `INSERT INTO tenants (id, parent_id, name, slug, custom_domain, logo_url, primary_color, favicon_url, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)`
+	if tenant.KvmMode == "" {
+		tenant.KvmMode = "webkvm"
+	}
+	query := `INSERT INTO tenants (id, parent_id, name, slug, custom_domain, logo_url, primary_color, favicon_url, kvm_mode, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)`
 	_, err := r.db.Exec(ctx, query,
 		tenant.ID, tenant.ParentID, tenant.Name, tenant.Slug,
-		tenant.CustomDomain, tenant.LogoURL, tenant.PrimaryColor, tenant.FaviconURL, now)
+		tenant.CustomDomain, tenant.LogoURL, tenant.PrimaryColor, tenant.FaviconURL,
+		tenant.KvmMode, now)
 	if err == nil {
 		tenant.CreatedAt = now
 		tenant.UpdatedAt = now
@@ -34,14 +38,14 @@ func (r *TenantRepo) Create(ctx context.Context, tenant *domain.Tenant) error {
 }
 
 func (r *TenantRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Tenant, error) {
-	query := `SELECT id, parent_id, name, slug, custom_domain, logo_url, primary_color, favicon_url, created_at, updated_at
+	query := `SELECT id, parent_id, name, slug, custom_domain, logo_url, primary_color, favicon_url, kvm_mode, created_at, updated_at
 		FROM tenants WHERE id = $1`
 
 	var t domain.Tenant
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&t.ID, &t.ParentID, &t.Name, &t.Slug,
 		&t.CustomDomain, &t.LogoURL, &t.PrimaryColor, &t.FaviconURL,
-		&t.CreatedAt, &t.UpdatedAt,
+		&t.KvmMode, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get tenant: %w", err)
@@ -50,14 +54,14 @@ func (r *TenantRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Tenant,
 }
 
 func (r *TenantRepo) GetBySlug(ctx context.Context, slug string) (*domain.Tenant, error) {
-	query := `SELECT id, parent_id, name, slug, custom_domain, logo_url, primary_color, favicon_url, created_at, updated_at
+	query := `SELECT id, parent_id, name, slug, custom_domain, logo_url, primary_color, favicon_url, kvm_mode, created_at, updated_at
 		FROM tenants WHERE slug = $1`
 
 	var t domain.Tenant
 	err := r.db.QueryRow(ctx, query, slug).Scan(
 		&t.ID, &t.ParentID, &t.Name, &t.Slug,
 		&t.CustomDomain, &t.LogoURL, &t.PrimaryColor, &t.FaviconURL,
-		&t.CreatedAt, &t.UpdatedAt,
+		&t.KvmMode, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get tenant by slug: %w", err)
@@ -66,14 +70,14 @@ func (r *TenantRepo) GetBySlug(ctx context.Context, slug string) (*domain.Tenant
 }
 
 func (r *TenantRepo) GetByDomain(ctx context.Context, customDomain string) (*domain.Tenant, error) {
-	query := `SELECT id, parent_id, name, slug, custom_domain, logo_url, primary_color, favicon_url, created_at, updated_at
+	query := `SELECT id, parent_id, name, slug, custom_domain, logo_url, primary_color, favicon_url, kvm_mode, created_at, updated_at
 		FROM tenants WHERE custom_domain = $1`
 
 	var t domain.Tenant
 	err := r.db.QueryRow(ctx, query, customDomain).Scan(
 		&t.ID, &t.ParentID, &t.Name, &t.Slug,
 		&t.CustomDomain, &t.LogoURL, &t.PrimaryColor, &t.FaviconURL,
-		&t.CreatedAt, &t.UpdatedAt,
+		&t.KvmMode, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get tenant by domain: %w", err)
@@ -97,11 +101,11 @@ func (r *TenantRepo) List(ctx context.Context, parentID *uuid.UUID, page, pageSi
 	offset := (page - 1) * pageSize
 	var query string
 	if parentID != nil {
-		query = `SELECT id, parent_id, name, slug, custom_domain, logo_url, primary_color, favicon_url, created_at, updated_at
+		query = `SELECT id, parent_id, name, slug, custom_domain, logo_url, primary_color, favicon_url, kvm_mode, created_at, updated_at
 			FROM tenants WHERE parent_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
 		args = []any{*parentID, pageSize, offset}
 	} else {
-		query = `SELECT id, parent_id, name, slug, custom_domain, logo_url, primary_color, favicon_url, created_at, updated_at
+		query = `SELECT id, parent_id, name, slug, custom_domain, logo_url, primary_color, favicon_url, kvm_mode, created_at, updated_at
 			FROM tenants ORDER BY created_at DESC LIMIT $1 OFFSET $2`
 		args = []any{pageSize, offset}
 	}
@@ -117,7 +121,7 @@ func (r *TenantRepo) List(ctx context.Context, parentID *uuid.UUID, page, pageSi
 		err := row.Scan(
 			&t.ID, &t.ParentID, &t.Name, &t.Slug,
 			&t.CustomDomain, &t.LogoURL, &t.PrimaryColor, &t.FaviconURL,
-			&t.CreatedAt, &t.UpdatedAt,
+			&t.KvmMode, &t.CreatedAt, &t.UpdatedAt,
 		)
 		return t, err
 	})
@@ -140,7 +144,7 @@ func (r *TenantRepo) List(ctx context.Context, parentID *uuid.UUID, page, pageSi
 }
 
 func (r *TenantRepo) ListChildren(ctx context.Context, parentID uuid.UUID) ([]domain.Tenant, error) {
-	query := `SELECT id, parent_id, name, slug, custom_domain, logo_url, primary_color, favicon_url, created_at, updated_at
+	query := `SELECT id, parent_id, name, slug, custom_domain, logo_url, primary_color, favicon_url, kvm_mode, created_at, updated_at
 		FROM tenants WHERE parent_id = $1 ORDER BY name`
 
 	rows, err := r.db.Query(ctx, query, parentID)
@@ -154,7 +158,7 @@ func (r *TenantRepo) ListChildren(ctx context.Context, parentID uuid.UUID) ([]do
 		err := row.Scan(
 			&t.ID, &t.ParentID, &t.Name, &t.Slug,
 			&t.CustomDomain, &t.LogoURL, &t.PrimaryColor, &t.FaviconURL,
-			&t.CreatedAt, &t.UpdatedAt,
+			&t.KvmMode, &t.CreatedAt, &t.UpdatedAt,
 		)
 		return t, err
 	})
@@ -162,10 +166,10 @@ func (r *TenantRepo) ListChildren(ctx context.Context, parentID uuid.UUID) ([]do
 
 func (r *TenantRepo) GetSubTree(ctx context.Context, rootID uuid.UUID) ([]domain.Tenant, error) {
 	query := `WITH RECURSIVE subtree AS (
-		SELECT id, parent_id, name, slug, custom_domain, logo_url, primary_color, favicon_url, created_at, updated_at
+		SELECT id, parent_id, name, slug, custom_domain, logo_url, primary_color, favicon_url, kvm_mode, created_at, updated_at
 		FROM tenants WHERE id = $1
 		UNION ALL
-		SELECT t.id, t.parent_id, t.name, t.slug, t.custom_domain, t.logo_url, t.primary_color, t.favicon_url, t.created_at, t.updated_at
+		SELECT t.id, t.parent_id, t.name, t.slug, t.custom_domain, t.logo_url, t.primary_color, t.favicon_url, t.kvm_mode, t.created_at, t.updated_at
 		FROM tenants t INNER JOIN subtree s ON t.parent_id = s.id
 	)
 	SELECT * FROM subtree ORDER BY name`
@@ -181,7 +185,7 @@ func (r *TenantRepo) GetSubTree(ctx context.Context, rootID uuid.UUID) ([]domain
 		err := row.Scan(
 			&t.ID, &t.ParentID, &t.Name, &t.Slug,
 			&t.CustomDomain, &t.LogoURL, &t.PrimaryColor, &t.FaviconURL,
-			&t.CreatedAt, &t.UpdatedAt,
+			&t.KvmMode, &t.CreatedAt, &t.UpdatedAt,
 		)
 		return t, err
 	})
@@ -189,11 +193,15 @@ func (r *TenantRepo) GetSubTree(ctx context.Context, rootID uuid.UUID) ([]domain
 
 func (r *TenantRepo) Update(ctx context.Context, tenant *domain.Tenant) error {
 	now := time.Now()
-	query := `UPDATE tenants SET name = $2, slug = $3, custom_domain = $4, logo_url = $5, primary_color = $6, favicon_url = $7, updated_at = $8
+	if tenant.KvmMode == "" {
+		tenant.KvmMode = "webkvm"
+	}
+	query := `UPDATE tenants SET name = $2, slug = $3, custom_domain = $4, logo_url = $5, primary_color = $6, favicon_url = $7, kvm_mode = $8, updated_at = $9
 		WHERE id = $1`
 	_, err := r.db.Exec(ctx, query,
 		tenant.ID, tenant.Name, tenant.Slug,
-		tenant.CustomDomain, tenant.LogoURL, tenant.PrimaryColor, tenant.FaviconURL, now)
+		tenant.CustomDomain, tenant.LogoURL, tenant.PrimaryColor, tenant.FaviconURL,
+		tenant.KvmMode, now)
 	if err == nil {
 		tenant.UpdatedAt = now
 	}

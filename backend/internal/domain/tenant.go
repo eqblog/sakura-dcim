@@ -15,6 +15,7 @@ type Tenant struct {
 	LogoURL      *string    `json:"logo_url,omitempty" db:"logo_url"`
 	PrimaryColor *string    `json:"primary_color,omitempty" db:"primary_color"`
 	FaviconURL   *string    `json:"favicon_url,omitempty" db:"favicon_url"`
+	KvmMode      string     `json:"kvm_mode" db:"kvm_mode"`
 	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at" db:"updated_at"`
 }

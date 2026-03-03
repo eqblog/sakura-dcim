@@ -30,6 +30,7 @@ type KVMSession struct {
 
 type KVMService struct {
 	serverRepo repository.ServerRepository
+	tenantRepo repository.TenantRepository
 	hub        *ws.Hub
 	cfg        *config.Config
 	logger     *zap.Logger
@@ -37,9 +38,10 @@ type KVMService struct {
 	mu         sync.RWMutex
 }
 
-func NewKVMService(serverRepo repository.ServerRepository, hub *ws.Hub, cfg *config.Config, logger *zap.Logger) *KVMService {
+func NewKVMService(serverRepo repository.ServerRepository, tenantRepo repository.TenantRepository, hub *ws.Hub, cfg *config.Config, logger *zap.Logger) *KVMService {
 	svc := &KVMService{
 		serverRepo: serverRepo,
+		tenantRepo: tenantRepo,
 		hub:        hub,
 		cfg:        cfg,
 		logger:     logger,
@@ -49,7 +51,7 @@ func NewKVMService(serverRepo repository.ServerRepository, hub *ws.Hub, cfg *con
 	return svc
 }
 
-func (s *KVMService) StartSession(ctx context.Context, serverID, userID uuid.UUID, directConsole bool) (*KVMSession, error) {
+func (s *KVMService) StartSession(ctx context.Context, serverID, userID uuid.UUID) (*KVMSession, error) {
 	server, err := s.serverRepo.GetByID(ctx, serverID)
 	if err != nil {
 		return nil, fmt.Errorf("server not found: %w", err)
@@ -65,6 +67,14 @@ func (s *KVMService) StartSession(ctx context.Context, serverID, userID uuid.UUI
 
 	if !s.hub.IsAgentOnline(*server.AgentID) {
 		return nil, fmt.Errorf("agent is offline")
+	}
+
+	// Determine KVM mode from tenant setting
+	directConsole := false
+	if server.TenantID != nil {
+		if tenant, err := s.tenantRepo.GetByID(ctx, *server.TenantID); err == nil {
+			directConsole = tenant.KvmMode == "vconsole"
+		}
 	}
 
 	// Check for existing session on this server

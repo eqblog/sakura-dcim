@@ -136,7 +136,7 @@ func (e *KVMExecutor) HandleKVMStart(raw json.RawMessage) (interface{}, error) {
 	}
 
 	// Wait for VNC server to be fully ready (RFB handshake, not just TCP)
-	if err := waitForVNC(gateway+":"+vncPort, 30*time.Second); err != nil {
+	if err := waitForVNC(gateway+":"+vncPort, 20*time.Second); err != nil {
 		// Log container status for diagnostics
 		out, _ := exec.Command("docker", "logs", "--tail", "20", containerName).CombinedOutput()
 		e.logger.Error("VNC not ready, container logs", zap.String("logs", string(out)))

@@ -63,12 +63,7 @@ func (h *KVMHandler) StartKVM(c *gin.Context) {
 
 	userID := middleware.GetUserID(c)
 
-	var body struct {
-		DirectConsole bool `json:"direct_console"`
-	}
-	_ = c.ShouldBindJSON(&body)
-
-	session, err := h.kvmService.StartSession(c.Request.Context(), serverID, userID, body.DirectConsole)
+	session, err := h.kvmService.StartSession(c.Request.Context(), serverID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: err.Error()})
 		return

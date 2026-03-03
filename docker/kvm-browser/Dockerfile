@@ -11,6 +11,7 @@ RUN apk add --no-cache \
     ttf-freefont \
     mesa-dri-gallium \
     curl \
+    python3 \
     && rm -rf /var/cache/apk/*
 
 RUN adduser -D -u 1000 -G kvm kvmuser
@@ -24,6 +25,7 @@ ENV DISPLAY=:99 \
     REDIRECT_URL=""
 
 COPY start.sh /start.sh
+COPY cdp-redirect.py /cdp-redirect.py
 RUN chmod +x /start.sh
 
 USER kvmuser

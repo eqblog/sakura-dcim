@@ -1,0 +1,1 @@
+ALTER TABLE tenants ADD COLUMN kvm_mode VARCHAR(20) NOT NULL DEFAULT 'webkvm';
