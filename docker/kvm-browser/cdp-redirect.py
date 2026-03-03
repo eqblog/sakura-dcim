@@ -6,7 +6,7 @@ Monitors the Chromium page via Chrome DevTools Protocol.
 When AUTO_USER / AUTO_PASS are set (direct console mode):
   1. Waits for login page to fully load & settle (handles redirects/SPA routing)
   2. Auto-fills username/password and submits via JavaScript
-  3. Waits fixed delay for login to complete, then navigates to REDIRECT_URL
+  3. Waits for URL to change (login redirect detected), then navigates to REDIRECT_URL
 
 When only REDIRECT_URL is set (web KVM manual-login mode):
   Waits for URL to settle, polls until URL/title changes, then navigates.
@@ -25,7 +25,7 @@ CDP_HOST = "127.0.0.1"
 CDP_PORT = 9222
 POLL_INTERVAL = 1.5  # seconds
 TIMEOUT = 300  # 5 minutes
-LOGIN_SETTLE_SECS = 8  # wait after login submission before redirect
+POST_LOGIN_SETTLE = 2  # seconds to wait after login redirect detected
 
 
 # ── CDP HTTP helpers ──
@@ -351,9 +351,11 @@ def auto_login(ws_url, username, password):
     return False
 
 
-def wait_for_page_change(baseline_url, baseline_title, ws_debug_url_ref):
-    """Poll until URL or title changes from the baseline (manual login detected)."""
-    deadline = time.time() + TIMEOUT
+def wait_for_page_change(baseline_url, baseline_title, ws_debug_url_ref, timeout=None):
+    """Poll until URL or title changes from the baseline (login detected)."""
+    if timeout is None:
+        timeout = TIMEOUT
+    deadline = time.time() + timeout
     while time.time() < deadline:
         time.sleep(POLL_INTERVAL)
         page = get_page_info()
@@ -379,6 +381,44 @@ def wait_for_page_change(baseline_url, baseline_title, ws_debug_url_ref):
             print(f"  to:   {current_url}  /  {current_title}", flush=True)
             return True
 
+    return False
+
+
+def wait_for_post_login(baseline_url, baseline_title, ws_debug_url_ref, timeout=90):
+    """After clicking login, wait for BMC to redirect away from the login page.
+
+    Uses a shorter timeout than the main TIMEOUT since we know login was
+    submitted. Falls back gracefully: if no redirect is seen within `timeout`
+    seconds, the caller should navigate anyway in case cookies were set silently.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        time.sleep(POLL_INTERVAL)
+        page = get_page_info()
+        if not page:
+            continue
+
+        current_url = page.get("url", "")
+        current_title = page.get("title", "")
+        ws_debug_url_ref[0] = page.get("webSocketDebuggerUrl", ws_debug_url_ref[0])
+
+        url_changed = current_url and current_url != baseline_url
+        title_changed = (
+            current_title
+            and baseline_title
+            and current_title != baseline_title
+            and current_title not in ("", "about:blank")
+        )
+
+        if url_changed or title_changed:
+            reason = "URL" if url_changed else "title"
+            print(f"CDP-redirect: Post-login redirect detected ({reason})", flush=True)
+            print(f"  from: {baseline_url}", flush=True)
+            print(f"  to:   {current_url}", flush=True)
+            return True
+
+    print(f"CDP-redirect: No post-login redirect in {timeout}s "
+          f"(BMC may be slow or login silent)", flush=True)
     return False
 
 
@@ -430,13 +470,27 @@ def main():
         success = auto_login(ws_debug_url, auto_user, auto_pass)
 
         if success:
-            # Use fixed delay instead of URL-change monitoring.
-            # URL-change detection causes false positives from SPA routing,
-            # intermediate redirects, and title updates during login.
-            print(f"CDP-redirect: Login submitted, waiting {LOGIN_SETTLE_SECS}s "
-                  f"for session to establish...", flush=True)
-            time.sleep(LOGIN_SETTLE_SECS)
-            navigate_current_page(redirect_url)
+            # ── Dynamic wait: detect when BMC redirects away from login page ──
+            # Replaces the old fixed LOGIN_SETTLE_SECS=8 delay which was too
+            # short for BMCs that take >8s to authenticate and redirect.
+            ws_ref = [ws_debug_url]
+            print("CDP-redirect: Login submitted — waiting for post-login redirect...", flush=True)
+            redirected = wait_for_post_login(settled_url, settled_title, ws_ref, timeout=90)
+
+            # Brief settle pause then navigate to vConsole
+            time.sleep(POST_LOGIN_SETTLE)
+            fresh = get_page_info()
+            nav_ws = fresh.get("webSocketDebuggerUrl", ws_ref[0]) if fresh else ws_ref[0]
+
+            if redirected:
+                print(f"CDP-redirect: Navigating to vConsole: {redirect_url}", flush=True)
+            else:
+                # No redirect detected — try navigating anyway; session cookies
+                # may be set even without a visible URL change (some BMC firmwares).
+                print(f"CDP-redirect: Navigating to vConsole anyway: {redirect_url}", flush=True)
+
+            result = navigate_tab(nav_ws, redirect_url)
+            print(f"CDP-redirect: Navigate result: {result}", flush=True)
         else:
             # Form not found — fall back to watching for manual login
             print("CDP-redirect: Auto-login failed, watching for manual login...",
