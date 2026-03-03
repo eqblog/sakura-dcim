@@ -34,12 +34,13 @@ const (
 )
 
 type KVMStartPayload struct {
-	IPMIIP    string `json:"ipmi_ip"`
-	IPMIUser  string `json:"ipmi_user"`
-	IPMIPass  string `json:"ipmi_pass"`
-	BMCType   string `json:"bmc_type"`
-	SessionID string `json:"session_id"`
-	RelayURL  string `json:"relay_url"`
+	IPMIIP        string `json:"ipmi_ip"`
+	IPMIUser      string `json:"ipmi_user"`
+	IPMIPass      string `json:"ipmi_pass"`
+	BMCType       string `json:"bmc_type"`
+	SessionID     string `json:"session_id"`
+	RelayURL      string `json:"relay_url"`
+	DirectConsole bool   `json:"direct_console"`
 }
 
 type KVMStopPayload struct {
@@ -84,6 +85,9 @@ func (e *KVMExecutor) HandleKVMStart(raw json.RawMessage) (interface{}, error) {
 	e.mu.Unlock()
 
 	targetURL := buildKVMTargetURL(p.BMCType, p.IPMIIP)
+	if p.DirectConsole {
+		targetURL = buildKVMConsoleURL(p.BMCType, p.IPMIIP)
+	}
 	containerName := kvmContainerPrefix + p.SessionID
 	gateway := getHostGateway()
 
@@ -388,6 +392,28 @@ func buildKVMTargetURL(bmcType, ip string) string {
 		return fmt.Sprintf("https://%s/index.html", ip)
 	case "huawei_ibmc":
 		return fmt.Sprintf("https://%s/login.html", ip)
+	default:
+		return fmt.Sprintf("https://%s", ip)
+	}
+}
+
+// buildKVMConsoleURL returns the vendor-specific virtual console URL,
+// skipping the BMC dashboard and going directly to the KVM/vConsole page.
+func buildKVMConsoleURL(bmcType, ip string) string {
+	if idx := strings.IndexByte(ip, '/'); idx != -1 {
+		ip = ip[:idx]
+	}
+	switch bmcType {
+	case "dell_idrac":
+		return fmt.Sprintf("https://%s/restgui/vconsole/index.html", ip)
+	case "hp_ilo":
+		return fmt.Sprintf("https://%s/html/IRC.html", ip)
+	case "supermicro":
+		return fmt.Sprintf("https://%s/cgi/ikvm.cgi", ip)
+	case "lenovo_xcc":
+		return fmt.Sprintf("https://%s/index.html#/remotecontrol/kvm", ip)
+	case "huawei_ibmc":
+		return fmt.Sprintf("https://%s/bmc/virtualConsole", ip)
 	default:
 		return fmt.Sprintf("https://%s", ip)
 	}

@@ -8,7 +8,7 @@ import { tenantAPI } from '../../api';
 const { Title, Text } = Typography;
 
 const KVM_MODE_KEY = 'sakura_kvm_mode';
-type KvmMode = 'webkvm' | 'ikvm';
+type KvmMode = 'webkvm' | 'vconsole';
 
 const SettingsPage: React.FC = () => {
   const { user, fetchUser } = useAuthStore();
@@ -61,7 +61,7 @@ const SettingsPage: React.FC = () => {
   const handleKvmModeChange = (mode: KvmMode) => {
     setKvmMode(mode);
     localStorage.setItem(KVM_MODE_KEY, mode);
-    message.success(`KVM mode set to ${mode === 'webkvm' ? 'Web KVM (Docker Isolation)' : 'Direct iKVM (BMC Native)'}`);
+    message.success(`KVM mode set to ${mode === 'webkvm' ? 'Web KVM (Full BMC UI)' : 'Direct vConsole'}`);
   };
 
   return (
@@ -78,22 +78,24 @@ const SettingsPage: React.FC = () => {
             <Radio.Group value={kvmMode} onChange={(e) => handleKvmModeChange(e.target.value)}>
               <Space direction="vertical">
                 <Radio value="webkvm">
-                  <Text strong>Web KVM</Text>
+                  <Text strong>Web KVM (Full BMC)</Text>
                   <Text type="secondary" style={{ display: 'block', marginLeft: 24, fontSize: 12 }}>
-                    Docker-isolated Chromium browser connects to BMC web UI. Secure — user never accesses BMC directly.
+                    Docker-isolated Chromium opens the BMC web UI login page. You can navigate to any BMC feature.
                   </Text>
                 </Radio>
-                <Radio value="ikvm">
-                  <Text strong>Direct iKVM</Text>
+                <Radio value="vconsole">
+                  <Text strong>Direct vConsole</Text>
                   <Text type="secondary" style={{ display: 'block', marginLeft: 24, fontSize: 12 }}>
-                    Open the BMC&apos;s native HTML5/Java KVM console directly. Requires network access to the BMC management VLAN.
+                    Docker-isolated Chromium opens the BMC virtual console (KVM) page directly, skipping the dashboard.
+                    Supported: iDRAC vConsole, iLO Remote Console, Supermicro iKVM, Lenovo XCC, Huawei iBMC.
                   </Text>
                 </Radio>
               </Space>
             </Radio.Group>
           </div>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            Current mode: <Tag color={kvmMode === 'webkvm' ? 'blue' : 'orange'}>{kvmMode === 'webkvm' ? 'Web KVM' : 'Direct iKVM'}</Tag>
+            Current mode: <Tag color={kvmMode === 'webkvm' ? 'blue' : 'green'}>{kvmMode === 'webkvm' ? 'Web KVM' : 'Direct vConsole'}</Tag>
+            &mdash; Both modes use Docker container isolation.
           </Text>
         </Space>
       </Card>

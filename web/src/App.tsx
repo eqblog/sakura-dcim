@@ -25,7 +25,6 @@ import RolesPage from './pages/Roles';
 import ResellerDashboard from './pages/ResellerDashboard';
 import APIDocsPage from './pages/APIDocs';
 import DiscoveryPage from './pages/Discovery';
-import KvmPopupPage from './pages/KvmPopup';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuthStore();
@@ -101,7 +100,6 @@ const App: React.FC = () => {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/kvm/:id" element={<ProtectedRoute><KvmPopupPage /></ProtectedRoute>} />
             <Route
               path="/"
               element={

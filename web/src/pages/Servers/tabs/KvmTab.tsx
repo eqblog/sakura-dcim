@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { Button, Space, Alert, Spin, Tooltip, Input, message } from 'antd';
+import { Button, Space, Alert, Spin, Tooltip, Input } from 'antd';
 import {
   DesktopOutlined,
   FullscreenOutlined,
@@ -7,8 +7,6 @@ import {
   PoweroffOutlined,
   LoadingOutlined,
   SendOutlined,
-  ExportOutlined,
-  LinkOutlined,
   CodeOutlined,
 } from '@ant-design/icons';
 import { serverAPI } from '../../../api';
@@ -19,19 +17,8 @@ import KvmCredentialsCard from './KvmCredentialsCard';
 import RFB from '@novnc/novnc/lib/rfb';
 
 const KVM_MODE_KEY = 'sakura_kvm_mode';
-type KvmMode = 'webkvm' | 'ikvm';
+type KvmMode = 'webkvm' | 'vconsole';
 const getKvmMode = (): KvmMode => (localStorage.getItem(KVM_MODE_KEY) as KvmMode) || 'webkvm';
-
-const buildIkvmUrl = (bmcType: string, ip: string): string => {
-  switch (bmcType) {
-    case 'dell_idrac': return `https://${ip}/console`;
-    case 'hp_ilo': return `https://${ip}/html/login.html`;
-    case 'supermicro': return `https://${ip}/cgi/ikvm.cgi`;
-    case 'lenovo_xcc': return `https://${ip}/index.html#/remotecontrol/kvm`;
-    case 'huawei_ibmc': return `https://${ip}/bmc/virtualConsole`;
-    default: return `https://${ip}`;
-  }
-};
 
 const sendTextToVnc = (rfb: any, text: string) => {
   for (const char of text) rfb.sendKey(char.charCodeAt(0));
@@ -65,8 +52,9 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
   const startKvm = useCallback(async () => {
     setError(''); setStatus('starting');
     setTempUser(''); setTempPass(''); setShowPass(false);
+    const directConsole = getKvmMode() === 'vconsole';
     try {
-      const { data: resp } = await serverAPI.kvmStart(serverId);
+      const { data: resp } = await serverAPI.kvmStart(serverId, directConsole);
       if (!resp.success || !resp.data) throw new Error(resp.error || 'Failed to start KVM session');
       const data = resp.data as { session_id: string; temp_user?: string; temp_pass?: string };
       setSessionId(data.session_id);
@@ -116,18 +104,6 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
     if (rfbRef.current) rfbRef.current.sendCtrlAltDel();
   }, []);
 
-  const handleOpenPopup = useCallback(() => {
-    const w = 1100, h = 800;
-    const left = (screen.width - w) / 2, top = (screen.height - h) / 2;
-    window.open(`/kvm/${serverId}`, `kvm_${serverId}`,
-      `width=${w},height=${h},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`);
-  }, [serverId]);
-
-  const handleOpenIkvm = useCallback(() => {
-    if (!server.ipmi_ip) { message.error('No IPMI IP configured'); return; }
-    window.open(buildIkvmUrl(server.bmc_type, server.ipmi_ip), `ikvm_${serverId}`, 'noopener,noreferrer');
-  }, [server.ipmi_ip, server.bmc_type, serverId]);
-
   useEffect(() => {
     const handler = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', handler);
@@ -141,21 +117,15 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
       <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Space wrap>
           {status === 'idle' || status === 'error' ? (
-            <Button type="primary" icon={<DesktopOutlined />} onClick={startKvm}>Open KVM Console</Button>
+            <Button type="primary" icon={<DesktopOutlined />} onClick={startKvm}>
+              {kvmMode === 'vconsole' ? 'Open vConsole' : 'Open KVM Console'}
+            </Button>
           ) : status === 'starting' || status === 'connecting' ? (
             <Button disabled icon={<LoadingOutlined />}>
               {status === 'starting' ? 'Starting...' : 'Connecting...'}
             </Button>
           ) : (
             <Button danger icon={<PoweroffOutlined />} onClick={stopKvm}>Disconnect</Button>
-          )}
-          <Tooltip title="Open KVM in a new popup window">
-            <Button icon={<ExportOutlined />} onClick={handleOpenPopup}>Popup</Button>
-          </Tooltip>
-          {server.ipmi_ip && (
-            <Tooltip title={`Open BMC KVM directly (${server.bmc_type}) — requires network access to BMC`}>
-              <Button icon={<LinkOutlined />} onClick={handleOpenIkvm}>Direct iKVM</Button>
-            </Tooltip>
           )}
         </Space>
         <Space>
@@ -215,16 +185,6 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
           overflow: 'hidden',
         }}
       />
-
-      {kvmMode === 'ikvm' && status === 'idle' && server.ipmi_ip && (
-        <Alert
-          type="info"
-          message="KVM mode is set to Direct iKVM. Click 'Direct iKVM' to open the BMC console directly."
-          description="You can change this in Settings → KVM Preferences."
-          showIcon
-          style={{ marginTop: 12 }}
-        />
-      )}
     </div>
   );
 };

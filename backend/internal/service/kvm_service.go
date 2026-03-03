@@ -49,7 +49,7 @@ func NewKVMService(serverRepo repository.ServerRepository, hub *ws.Hub, cfg *con
 	return svc
 }
 
-func (s *KVMService) StartSession(ctx context.Context, serverID, userID uuid.UUID) (*KVMSession, error) {
+func (s *KVMService) StartSession(ctx context.Context, serverID, userID uuid.UUID, directConsole bool) (*KVMSession, error) {
 	server, err := s.serverRepo.GetByID(ctx, serverID)
 	if err != nil {
 		return nil, fmt.Errorf("server not found: %w", err)
@@ -159,12 +159,13 @@ func (s *KVMService) StartSession(ctx context.Context, serverID, userID uuid.UUI
 
 	// Send KVM start command to agent
 	fullPayload := map[string]interface{}{
-		"ipmi_ip":    server.IPMIIP,
-		"ipmi_user":  ipmiUser,
-		"ipmi_pass":  ipmiPass,
-		"bmc_type":   string(server.BMCType),
-		"session_id": sessionID,
-		"relay_url":  relayURL,
+		"ipmi_ip":        server.IPMIIP,
+		"ipmi_user":      ipmiUser,
+		"ipmi_pass":      ipmiPass,
+		"bmc_type":       string(server.BMCType),
+		"session_id":     sessionID,
+		"relay_url":      relayURL,
+		"direct_console": directConsole,
 	}
 
 	_, err = s.hub.SendRequest(*server.AgentID, ws.ActionIPMIKVMStart, fullPayload, 60*time.Second)
