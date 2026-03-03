@@ -191,7 +191,15 @@ func (s *KVMService) StartSession(ctx context.Context, serverID, userID, tenantI
 		}
 	}
 
-	_, err = s.hub.SendRequest(*server.AgentID, ws.ActionIPMIKVMStart, fullPayload, 60*time.Second)
+	// Direct console mode runs auto-login synchronously inside Docker before
+	// starting x11vnc (so the user never sees the BMC login page).
+	// Allow 120s for this: 90s VNC wait + agent + network overhead.
+	// Web KVM mode starts x11vnc immediately, so 60s is plenty.
+	kvmStartTimeout := 60 * time.Second
+	if directConsole {
+		kvmStartTimeout = 120 * time.Second
+	}
+	_, err = s.hub.SendRequest(*server.AgentID, ws.ActionIPMIKVMStart, fullPayload, kvmStartTimeout)
 	if err != nil {
 		// Cleanup temp user if we created one
 		if session.TempUserSlot > 0 {

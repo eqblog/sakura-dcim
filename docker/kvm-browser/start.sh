@@ -30,13 +30,21 @@ chromium-browser \
   --window-position=0,0 \
   "${TARGET_URL}" &
 
-# Launch CDP redirect script in background (handles vConsole auto-navigation)
-if [ -n "$REDIRECT_URL" ]; then
+if [ -n "$AUTO_USER" ] && [ -n "$REDIRECT_URL" ]; then
+  # ── Direct Console mode ──
+  # Run CDP auto-login + redirect SYNCHRONOUSLY before starting x11vnc.
+  # This ensures VNC is only exposed AFTER the browser has navigated to
+  # the vConsole page — the user never sees the BMC login screen.
+  # "|| true" prevents script exit on non-zero return (graceful fallback).
+  echo "start.sh: auto-login mode — running cdp-redirect.py synchronously"
+  python3 /cdp-redirect.py || true
+  echo "start.sh: cdp-redirect.py complete, starting VNC server"
+elif [ -n "$REDIRECT_URL" ]; then
+  # ── Web KVM mode ──
+  # Run in background: user logs in manually via the VNC viewer,
+  # CDP script monitors and navigates to vConsole after manual login.
   python3 /cdp-redirect.py &
 fi
-
-# Give Chromium a moment to start rendering before x11vnc captures screen
-sleep 1
 
 # Start VNC server
 # -forever: keep running after clients disconnect

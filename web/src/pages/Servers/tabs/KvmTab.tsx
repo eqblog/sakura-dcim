@@ -161,7 +161,9 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
               </Button>
             )
           ) : status === 'starting' ? (
-            <Button disabled icon={<LoadingOutlined />}>Starting...</Button>
+            <Button disabled icon={<LoadingOutlined />}>
+              {isDirectMode ? 'Auto-logging in...' : 'Starting...'}
+            </Button>
           ) : status === 'connecting' ? (
             <Button disabled icon={<LoadingOutlined />}>Connecting...</Button>
           ) : (
@@ -223,6 +225,15 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
       {(status === 'starting' || status === 'connecting') && (
         <div style={{ textAlign: 'center', padding: 60 }}>
           <Spin size="large" />
+          {isDirectMode && status === 'starting' && (
+            <div style={{ marginTop: 16 }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Auto-logging into BMC and navigating to vConsole…
+                <br />
+                This may take up to 60 seconds.
+              </Text>
+            </div>
+          )}
         </div>
       )}
 
