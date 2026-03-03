@@ -51,7 +51,7 @@ func NewKVMService(serverRepo repository.ServerRepository, tenantRepo repository
 	return svc
 }
 
-func (s *KVMService) StartSession(ctx context.Context, serverID, userID uuid.UUID) (*KVMSession, error) {
+func (s *KVMService) StartSession(ctx context.Context, serverID, userID, tenantID uuid.UUID) (*KVMSession, error) {
 	server, err := s.serverRepo.GetByID(ctx, serverID)
 	if err != nil {
 		return nil, fmt.Errorf("server not found: %w", err)
@@ -69,12 +69,10 @@ func (s *KVMService) StartSession(ctx context.Context, serverID, userID uuid.UUI
 		return nil, fmt.Errorf("agent is offline")
 	}
 
-	// Determine KVM mode from tenant setting
+	// Determine KVM mode from user's tenant setting
 	directConsole := false
-	if server.TenantID != nil {
-		if tenant, err := s.tenantRepo.GetByID(ctx, *server.TenantID); err == nil {
-			directConsole = tenant.KvmMode == "vconsole"
-		}
+	if tenant, err := s.tenantRepo.GetByID(ctx, tenantID); err == nil {
+		directConsole = tenant.KvmMode == "vconsole"
 	}
 
 	// Check for existing session on this server

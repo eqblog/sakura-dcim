@@ -62,8 +62,9 @@ func (h *KVMHandler) StartKVM(c *gin.Context) {
 	}
 
 	userID := middleware.GetUserID(c)
+	tenantID := middleware.GetTenantID(c)
 
-	session, err := h.kvmService.StartSession(c.Request.Context(), serverID, userID)
+	session, err := h.kvmService.StartSession(c.Request.Context(), serverID, userID, tenantID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, domain.APIResponse{Success: false, Error: err.Error()})
 		return
