@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { Button, Space, Alert, Spin, Tooltip, Input } from 'antd';
+import { Button, Space, Alert, Spin, Tooltip, Input, Radio, Typography } from 'antd';
 import {
   DesktopOutlined,
   FullscreenOutlined,
@@ -15,6 +15,8 @@ import KvmCredentialsCard from './KvmCredentialsCard';
 
 // @ts-expect-error noVNC has no type declarations
 import RFB from '@novnc/novnc/lib/rfb';
+
+const { Text } = Typography;
 
 const KVM_MODE_KEY = 'sakura_kvm_mode';
 type KvmMode = 'webkvm' | 'vconsole';
@@ -43,6 +45,7 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
   const [tempPass, setTempPass] = useState<string>('');
   const [showPass, setShowPass] = useState(false);
   const [commandText, setCommandText] = useState('');
+  const [kvmMode, setKvmMode] = useState<KvmMode>(getKvmMode);
 
   const cleanup = useCallback(() => {
     if (rfbRef.current) { rfbRef.current.disconnect(); rfbRef.current = null; }
@@ -52,7 +55,7 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
   const startKvm = useCallback(async () => {
     setError(''); setStatus('starting');
     setTempUser(''); setTempPass(''); setShowPass(false);
-    const directConsole = getKvmMode() === 'vconsole';
+    const directConsole = kvmMode === 'vconsole';
     try {
       const { data: resp } = await serverAPI.kvmStart(serverId, directConsole);
       if (!resp.success || !resp.data) throw new Error(resp.error || 'Failed to start KVM session');
@@ -110,13 +113,33 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
     return () => { document.removeEventListener('fullscreenchange', handler); cleanup(); };
   }, [cleanup]);
 
-  const kvmMode = getKvmMode();
+  const handleModeChange = (mode: KvmMode) => {
+    setKvmMode(mode);
+    localStorage.setItem(KVM_MODE_KEY, mode);
+  };
+
+  const isIdle = status === 'idle' || status === 'error';
 
   return (
     <div ref={containerRef}>
+      {isIdle && (
+        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Text type="secondary">Mode:</Text>
+          <Radio.Group value={kvmMode} onChange={(e) => handleModeChange(e.target.value)} size="small">
+            <Radio.Button value="webkvm">Web KVM</Radio.Button>
+            <Radio.Button value="vconsole">Direct vConsole</Radio.Button>
+          </Radio.Group>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {kvmMode === 'vconsole'
+              ? 'Auto-navigates to BMC console after login'
+              : 'Opens full BMC web UI'}
+          </Text>
+        </div>
+      )}
+
       <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Space wrap>
-          {status === 'idle' || status === 'error' ? (
+          {isIdle ? (
             <Button type="primary" icon={<DesktopOutlined />} onClick={startKvm}>
               {kvmMode === 'vconsole' ? 'Open vConsole' : 'Open KVM Console'}
             </Button>

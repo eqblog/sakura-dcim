@@ -10,7 +10,7 @@ for i in $(seq 1 10); do
   sleep 0.5
 done
 
-# Start Chromium in kiosk mode
+# Start Chromium in kiosk mode with remote debugging for post-login navigation
 chromium-browser \
   --no-sandbox \
   --disable-gpu \
@@ -25,9 +25,51 @@ chromium-browser \
   --disable-features=TranslateUI \
   --ignore-certificate-errors \
   --kiosk \
+  --remote-debugging-port=9222 \
   --window-size=${SCREEN_WIDTH},${SCREEN_HEIGHT} \
   --window-position=0,0 \
   "${TARGET_URL}" &
+
+# Auto-redirect to REDIRECT_URL after login (for direct vConsole mode).
+# Polls CDP until the page URL changes from the login page (indicating
+# successful authentication), then opens the console URL in a new tab
+# and closes the old one so the session cookie is preserved.
+if [ -n "$REDIRECT_URL" ]; then
+  (
+    # Wait for Chromium and CDP to become available
+    sleep 6
+    INITIAL_URL=""
+    for i in $(seq 1 15); do
+      INITIAL_URL=$(curl -s http://127.0.0.1:9222/json 2>/dev/null \
+        | grep '"url"' | head -1 | sed 's/.*"url": *"//;s/".*//')
+      [ -n "$INITIAL_URL" ] && break
+      sleep 1
+    done
+
+    if [ -n "$INITIAL_URL" ]; then
+      # Poll until URL changes (user authenticated) — up to 5 minutes
+      ATTEMPTS=0
+      while [ $ATTEMPTS -lt 150 ]; do
+        sleep 2
+        CURRENT=$(curl -s http://127.0.0.1:9222/json 2>/dev/null \
+          | grep '"url"' | head -1 | sed 's/.*"url": *"//;s/".*//')
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$INITIAL_URL" ]; then
+          # Login detected — navigate to console page
+          sleep 2
+          OLD_ID=$(curl -s http://127.0.0.1:9222/json 2>/dev/null \
+            | grep '"id"' | head -1 | sed 's/.*"id": *"//;s/".*//')
+          ENCODED=$(printf '%s' "$REDIRECT_URL" | sed 's/#/%23/g; s/ /%20/g')
+          curl -s -X PUT "http://127.0.0.1:9222/json/new?${ENCODED}" >/dev/null 2>&1
+          sleep 1
+          [ -n "$OLD_ID" ] && \
+            curl -s -X PUT "http://127.0.0.1:9222/json/close/${OLD_ID}" >/dev/null 2>&1
+          break
+        fi
+        ATTEMPTS=$((ATTEMPTS + 1))
+      done
+    fi
+  ) &
+fi
 
 # Give Chromium a moment to start rendering before x11vnc captures screen
 sleep 2
@@ -36,5 +78,4 @@ sleep 2
 # -forever: keep running after clients disconnect
 # -shared:  allow multiple concurrent VNC connections
 # -nopw:    no password (relay handles auth)
-# NOTE: -ncache removed to reduce memory (saves ~80MB with 1280x1024)
 exec x11vnc -display :99 -rfbport ${VNC_PORT} -nopw -listen 0.0.0.0 -xkb -forever -shared

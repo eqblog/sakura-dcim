@@ -10,6 +10,7 @@ RUN apk add --no-cache \
     dbus \
     ttf-freefont \
     mesa-dri-gallium \
+    curl \
     && rm -rf /var/cache/apk/*
 
 RUN adduser -D -u 1000 -G kvm kvmuser
@@ -19,7 +20,8 @@ ENV DISPLAY=:99 \
     SCREEN_HEIGHT=1024 \
     SCREEN_DEPTH=24 \
     VNC_PORT=5900 \
-    TARGET_URL=""
+    TARGET_URL="" \
+    REDIRECT_URL=""
 
 COPY start.sh /start.sh
 RUN chmod +x /start.sh

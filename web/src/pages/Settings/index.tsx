@@ -1,18 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Typography, Form, Input, Button, ColorPicker, message, Space, Divider, Descriptions, Tag, Radio } from 'antd';
-import { SaveOutlined, ReloadOutlined, DesktopOutlined } from '@ant-design/icons';
+import { Card, Typography, Form, Input, Button, ColorPicker, message, Space, Divider, Descriptions, Tag } from 'antd';
+import { SaveOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth';
 import { useBrandingStore } from '../../store/branding';
 import { tenantAPI } from '../../api';
 
 const { Title, Text } = Typography;
 
-const KVM_MODE_KEY = 'sakura_kvm_mode';
-type KvmMode = 'webkvm' | 'vconsole';
-
 const SettingsPage: React.FC = () => {
   const { user, fetchUser } = useAuthStore();
-  const [kvmMode, setKvmMode] = useState<KvmMode>(() => (localStorage.getItem(KVM_MODE_KEY) as KvmMode) || 'webkvm');
   const { setBrandingFromTenant } = useBrandingStore();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
@@ -58,47 +54,9 @@ const SettingsPage: React.FC = () => {
     setSaving(false);
   };
 
-  const handleKvmModeChange = (mode: KvmMode) => {
-    setKvmMode(mode);
-    localStorage.setItem(KVM_MODE_KEY, mode);
-    message.success(`KVM mode set to ${mode === 'webkvm' ? 'Web KVM (Full BMC UI)' : 'Direct vConsole'}`);
-  };
-
   return (
     <div>
       <Title level={4}>Settings</Title>
-
-      <Card
-        title={<><DesktopOutlined style={{ marginRight: 8 }} />KVM Preferences</>}
-        style={{ marginBottom: 16 }}
-      >
-        <Space direction="vertical" style={{ width: '100%' }} size={12}>
-          <div>
-            <Text strong style={{ display: 'block', marginBottom: 8 }}>KVM Console Mode</Text>
-            <Radio.Group value={kvmMode} onChange={(e) => handleKvmModeChange(e.target.value)}>
-              <Space direction="vertical">
-                <Radio value="webkvm">
-                  <Text strong>Web KVM (Full BMC)</Text>
-                  <Text type="secondary" style={{ display: 'block', marginLeft: 24, fontSize: 12 }}>
-                    Docker-isolated Chromium opens the BMC web UI login page. You can navigate to any BMC feature.
-                  </Text>
-                </Radio>
-                <Radio value="vconsole">
-                  <Text strong>Direct vConsole</Text>
-                  <Text type="secondary" style={{ display: 'block', marginLeft: 24, fontSize: 12 }}>
-                    Docker-isolated Chromium opens the BMC virtual console (KVM) page directly, skipping the dashboard.
-                    Supported: iDRAC vConsole, iLO Remote Console, Supermicro iKVM, Lenovo XCC, Huawei iBMC.
-                  </Text>
-                </Radio>
-              </Space>
-            </Radio.Group>
-          </div>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            Current mode: <Tag color={kvmMode === 'webkvm' ? 'blue' : 'green'}>{kvmMode === 'webkvm' ? 'Web KVM' : 'Direct vConsole'}</Tag>
-            &mdash; Both modes use Docker container isolation.
-          </Text>
-        </Space>
-      </Card>
 
       <Card title="Tenant Information" style={{ marginBottom: 16 }}>
         <Descriptions column={2} size="small">

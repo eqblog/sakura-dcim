@@ -85,8 +85,9 @@ func (e *KVMExecutor) HandleKVMStart(raw json.RawMessage) (interface{}, error) {
 	e.mu.Unlock()
 
 	targetURL := buildKVMTargetURL(p.BMCType, p.IPMIIP)
+	redirectURL := ""
 	if p.DirectConsole {
-		targetURL = buildKVMConsoleURL(p.BMCType, p.IPMIIP)
+		redirectURL = buildKVMConsoleURL(p.BMCType, p.IPMIIP)
 	}
 	containerName := kvmContainerPrefix + p.SessionID
 	gateway := getHostGateway()
@@ -103,6 +104,7 @@ func (e *KVMExecutor) HandleKVMStart(raw json.RawMessage) (interface{}, error) {
 		"--name", containerName,
 		"-p", fmt.Sprintf("%s::5900", portBind),
 		"-e", fmt.Sprintf("TARGET_URL=%s", targetURL),
+		"-e", fmt.Sprintf("REDIRECT_URL=%s", redirectURL),
 		"-e", "SCREEN_WIDTH=1280",
 		"-e", "SCREEN_HEIGHT=1024",
 		"--memory=1g",
