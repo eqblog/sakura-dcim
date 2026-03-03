@@ -25,6 +25,7 @@ import RolesPage from './pages/Roles';
 import ResellerDashboard from './pages/ResellerDashboard';
 import APIDocsPage from './pages/APIDocs';
 import DiscoveryPage from './pages/Discovery';
+import KvmWindowPage from './pages/KvmWindow';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuthStore();
@@ -100,6 +101,15 @@ const App: React.FC = () => {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            {/* Standalone KVM popup window — no AppLayout chrome */}
+            <Route
+              path="/kvm-window/:serverId"
+              element={
+                <ProtectedRoute>
+                  <KvmWindowPage />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/"
               element={

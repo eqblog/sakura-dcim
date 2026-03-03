@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { Button, Space, Alert, Spin, Tooltip, Input, Tag, Typography } from 'antd';
+import { Button, Space, Alert, Spin, Tooltip, Input, Tag, Typography, message } from 'antd';
 import {
   DesktopOutlined,
   FullscreenOutlined,
@@ -8,6 +8,7 @@ import {
   LoadingOutlined,
   SendOutlined,
   CodeOutlined,
+  ExportOutlined,
 } from '@ant-design/icons';
 import { serverAPI } from '../../../api';
 import type { Server } from '../../../types';
@@ -46,6 +47,19 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
   const [commandText, setCommandText] = useState('');
 
   const isDirectMode = kvmMode === 'vconsole';
+  const isPopupMode = kvmMode === 'popup';
+
+  // Open KVM in a standalone popup window
+  const openKvmPopup = useCallback(() => {
+    const popup = window.open(
+      `/kvm-window/${serverId}`,
+      `kvm_${serverId}`,
+      'width=1280,height=800,toolbar=no,menubar=no,resizable=yes,scrollbars=no,status=no',
+    );
+    if (!popup) {
+      message.error('Popup was blocked. Please allow popups for this site and try again.');
+    }
+  }, [serverId]);
 
   const cleanup = useCallback(() => {
     if (rfbRef.current) { rfbRef.current.disconnect(); rfbRef.current = null; }
@@ -120,11 +134,13 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
       {isIdle && (
         <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Text type="secondary">Mode:</Text>
-          <Tag color={isDirectMode ? 'green' : 'blue'}>
-            {isDirectMode ? 'Direct Console' : 'Web KVM'}
+          <Tag color={isPopupMode ? 'purple' : isDirectMode ? 'green' : 'blue'}>
+            {isPopupMode ? 'iKVM / Popup' : isDirectMode ? 'Direct Console' : 'Web KVM'}
           </Tag>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            {isDirectMode
+            {isPopupMode
+              ? 'Opens KVM in a standalone popup window (no DCIM chrome)'
+              : isDirectMode
               ? 'Opens BMC virtual console with auto-login via embedded viewer'
               : 'Opens BMC web UI via embedded VNC viewer'}
             &nbsp;&mdash; set by admin in Settings
@@ -135,15 +151,29 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
       <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Space wrap>
           {isIdle ? (
-            <Button type="primary" icon={<DesktopOutlined />} onClick={startKvm}>
-              {isDirectMode ? 'Open vConsole' : 'Open KVM Console'}
-            </Button>
+            isPopupMode ? (
+              <Button type="primary" icon={<ExportOutlined />} onClick={openKvmPopup}>
+                Open KVM Window
+              </Button>
+            ) : (
+              <Button type="primary" icon={<DesktopOutlined />} onClick={startKvm}>
+                {isDirectMode ? 'Open vConsole' : 'Open KVM Console'}
+              </Button>
+            )
           ) : status === 'starting' ? (
             <Button disabled icon={<LoadingOutlined />}>Starting...</Button>
           ) : status === 'connecting' ? (
             <Button disabled icon={<LoadingOutlined />}>Connecting...</Button>
           ) : (
             <Button danger icon={<PoweroffOutlined />} onClick={stopKvm}>Disconnect</Button>
+          )}
+          {/* Pop Out button — available in embedded modes (not popup mode) */}
+          {!isPopupMode && (
+            <Tooltip title="Open KVM in a standalone popup window">
+              <Button icon={<ExportOutlined />} onClick={openKvmPopup}>
+                Pop Out
+              </Button>
+            </Tooltip>
           )}
         </Space>
         <Space>

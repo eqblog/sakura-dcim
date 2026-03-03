@@ -13,6 +13,8 @@ import {
   message,
   Popconfirm,
   Tooltip,
+  Divider,
+  Radio,
 } from 'antd';
 import {
   PlusOutlined,
@@ -97,6 +99,7 @@ const TenantsPage: React.FC = () => {
       logo_url: tenant.logo_url || '',
       favicon_url: tenant.favicon_url || '',
       primary_color: tenant.primary_color || undefined,
+      kvm_mode: tenant.kvm_mode || 'webkvm',
     });
     setEditModalOpen(true);
   };
@@ -250,6 +253,14 @@ const TenantsPage: React.FC = () => {
       </Form.Item>
       <Form.Item name="favicon_url" label="Favicon URL">
         <Input placeholder="https://example.com/favicon.ico" />
+      </Form.Item>
+      <Divider style={{ margin: '12px 0' }} />
+      <Form.Item name="kvm_mode" label="KVM Console Mode" initialValue="webkvm">
+        <Radio.Group>
+          <Radio value="webkvm">Web KVM</Radio>
+          <Radio value="vconsole">Direct Console</Radio>
+          <Radio value="popup">iKVM / Popup</Radio>
+        </Radio.Group>
       </Form.Item>
     </>
   );

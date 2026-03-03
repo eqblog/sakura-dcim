@@ -142,6 +142,12 @@ const SettingsPage: React.FC = () => {
                     Auto-logs into BMC and opens virtual console (iDRAC vConsole / iLO IRC / iKVM) in the embedded VNC viewer. Credentials are managed automatically.
                   </Text>
                 </Radio>
+                <Radio value="popup">
+                  <Text strong>iKVM / Popup Window</Text>
+                  <Text type="secondary" style={{ display: 'block', marginLeft: 24, fontSize: 12 }}>
+                    Opens KVM in a standalone browser popup window with no DCIM interface chrome. Clicking "Open KVM Window" launches a dedicated console window.
+                  </Text>
+                </Radio>
               </Space>
             </Radio.Group>
           </Form.Item>
