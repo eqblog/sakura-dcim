@@ -243,6 +243,92 @@ def wait_for_ready_state(timeout=30):
     return False
 
 
+def try_launch_vconsole(ws_url, fallback_url):
+    """Capture the virtual console URL by intercepting the BMC's launch button.
+
+    Intercepts window.open() called by the 'Virtual Console' button on the
+    BMC dashboard.  The URL passed to window.open() often includes a one-time
+    session token required for the KVM WebSocket to authenticate — so we must
+    use that URL instead of navigating to the vconsole page directly.
+
+    If no button is found, or window.open() is never called (e.g. the SPA
+    navigates internally), returns fallback_url so the caller can fall back.
+    """
+    js = r"""
+    (function() {
+        var captured = null;
+        var origOpen = window.open;
+        window.open = function(url, name, features) {
+            if (url && !captured) captured = String(url);
+            return {
+                focus: function() {}, closed: false,
+                location: {href: url || ''},
+                document: {write: function() {}, close: function() {}}
+            };
+        };
+
+        var found = null;
+
+        // 1. Vendor-specific / id-based selectors
+        var sels = [
+            '#launch-virtual-console', '#virtualConsole', '#btnVirtualConsole',
+            '#html5console', '#kvm-launch',
+            '[data-automation*="onsole"]', '[data-testid*="onsole"]',
+            '[data-id*="onsole"]', '[id*="Console"]',
+            'a[href*="vconsole"]', 'a[href*="virtualconsole"]',
+            '[onclick*="console"]', '[ng-click*="console"]',
+        ];
+        for (var i = 0; i < sels.length && !found; i++) {
+            var el = document.querySelector(sels[i]);
+            if (el && el.offsetWidth > 0) { el.click(); found = 'sel:' + sels[i]; }
+        }
+
+        // 2. Generic text search
+        if (!found) {
+            var pattern = /\b(virtual\s*console|launch\s*console|kvm\s*console|html5\s*console|remote\s*console)\b/i;
+            var nodes = document.querySelectorAll(
+                'button, a, [role="button"], [role="menuitem"], li, span');
+            for (var j = 0; j < nodes.length && !found; j++) {
+                var b = nodes[j];
+                if (b.offsetWidth === 0 && b.offsetHeight === 0) continue;
+                var txt = (b.textContent || b.title ||
+                           b.getAttribute('aria-label') || '').trim();
+                if (txt.length > 0 && txt.length < 60 && pattern.test(txt)) {
+                    b.click();
+                    found = 'txt:' + txt.substring(0, 40);
+                }
+            }
+        }
+
+        window.open = origOpen;
+        return JSON.stringify({url: captured, clicked: found});
+    })()
+    """
+    try:
+        s = ws_connect(ws_url)
+        resp = cdp_call(s, "Runtime.evaluate", {"expression": js})
+        s.close()
+        raw = (resp or {}).get("result", {}).get("result", {}).get("value", "")
+        if raw:
+            d = json.loads(raw)
+            print(f"CDP-redirect: vconsole button → {d}", flush=True)
+            url = d.get("url", "")
+            if url and url.startswith("http"):
+                return url
+            if d.get("clicked"):
+                # Button found and clicked, but no window.open() observed.
+                # The SPA may have navigated internally — check current URL.
+                time.sleep(2)
+                page = get_page_info()
+                if page:
+                    cur = page.get("url", "")
+                    if cur and "vconsole" in cur.lower():
+                        return cur
+    except Exception as e:
+        print(f"CDP-redirect: try_launch_vconsole error: {e}", flush=True)
+    return fallback_url
+
+
 def auto_login(ws_url, username, password):
     """Auto-fill login form and submit via CDP Runtime.evaluate.
 
@@ -504,35 +590,46 @@ def main():
             # short for BMCs that take >8s to authenticate and redirect.
             ws_ref = [ws_debug_url]
             print("CDP-redirect: Login submitted — waiting for post-login redirect...", flush=True)
-            redirected = wait_for_post_login(settled_url, settled_title, ws_ref, timeout=90)
+            wait_for_post_login(settled_url, settled_title, ws_ref, timeout=90)
 
-            # Brief settle pause then navigate to vConsole
+            # Settle pause: give the BMC session time to fully initialise.
+            # During this window the dashboard SPA finishes loading its state
+            # (including any KVM session tokens) before we interact with it.
             time.sleep(POST_LOGIN_SETTLE)
             fresh = get_page_info()
             nav_ws = fresh.get("webSocketDebuggerUrl", ws_ref[0]) if fresh else ws_ref[0]
 
-            if redirected:
-                print(f"CDP-redirect: Navigating to vConsole: {redirect_url}", flush=True)
-            else:
-                # No redirect detected — try navigating anyway; session cookies
-                # may be set even without a visible URL change (some BMC firmwares).
-                print(f"CDP-redirect: Navigating to vConsole anyway: {redirect_url}", flush=True)
+            # Wait for the dashboard page to be fully rendered so the
+            # Virtual Console button is clickable.
+            print("CDP-redirect: Waiting for dashboard to render...", flush=True)
+            wait_for_ready_state(timeout=15)
+            time.sleep(1)
 
-            result = navigate_tab(nav_ws, redirect_url)
+            # ── Key fix: capture the real console URL via button interception ──
+            # iDRAC (and other BMCs) call window.open(url) where url includes
+            # a one-time session token.  Directly navigating to vconsole/index.html
+            # skips this token → "Connecting Viewer..." hangs indefinitely.
+            # try_launch_vconsole() intercepts that window.open call to get the
+            # token-bearing URL.  Falls back to redirect_url if button not found.
+            fresh = get_page_info()
+            nav_ws = fresh.get("webSocketDebuggerUrl", nav_ws) if fresh else nav_ws
+            print("CDP-redirect: Intercepting Virtual Console button...", flush=True)
+            console_url = try_launch_vconsole(nav_ws, redirect_url)
+            print(f"CDP-redirect: Navigating to: {console_url}", flush=True)
+
+            result = navigate_tab(nav_ws, console_url)
             print(f"CDP-redirect: Navigate result: {result}", flush=True)
 
             # Wait for the vConsole page to fully load, then give the KVM
-            # viewer's WebSocket extra time to establish its video session.
-            # This ensures x11vnc starts only AFTER the viewer is connected,
-            # so the user sees the live server screen instead of "Connecting Viewer...".
+            # viewer time to establish its WebSocket video session.
             print("CDP-redirect: Waiting for vConsole page to load...", flush=True)
             time.sleep(2)  # let Page.navigate complete
-            loaded = wait_for_ready_state(timeout=30)
+            loaded = wait_for_ready_state(timeout=20)
             print(f"CDP-redirect: vConsole ready state: {'complete' if loaded else 'timeout'}",
                   flush=True)
             # Extra settle for KVM WebSocket to initialise video session
             print("CDP-redirect: Waiting for KVM viewer to initialise...", flush=True)
-            time.sleep(8)
+            time.sleep(5)
         else:
             # Form not found — fall back to watching for manual login
             print("CDP-redirect: Auto-login failed, watching for manual login...",
