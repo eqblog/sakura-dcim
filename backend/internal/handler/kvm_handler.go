@@ -83,13 +83,11 @@ func (h *KVMHandler) StartKVM(c *gin.Context) {
 	respData := map[string]interface{}{
 		"session_id": session.SessionID,
 	}
-	if session.TempUser != "" {
+	// Only expose temp credentials for Web KVM mode.
+	// Direct Console auto-logs in; credentials are not shown to the user.
+	if session.TempUser != "" && !session.DirectConsole {
 		respData["temp_user"] = session.TempUser
 		respData["temp_pass"] = session.TempPass
-	}
-	if session.ConsoleURL != "" {
-		respData["console_url"] = session.ConsoleURL
-		respData["direct_console"] = true
 	}
 
 	c.JSON(http.StatusOK, domain.APIResponse{

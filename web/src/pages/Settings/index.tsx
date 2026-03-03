@@ -139,7 +139,7 @@ const SettingsPage: React.FC = () => {
                 <Radio value="vconsole">
                   <Text strong>Direct Console</Text>
                   <Text type="secondary" style={{ display: 'block', marginLeft: 24, fontSize: 12 }}>
-                    Opens BMC virtual console (iDRAC vConsole / iLO IRC / iKVM) in a new tab. Requires browser network access to BMC.
+                    Auto-logs into BMC and opens virtual console (iDRAC vConsole / iLO IRC / iKVM) in the embedded VNC viewer. Credentials are managed automatically.
                   </Text>
                 </Radio>
               </Space>

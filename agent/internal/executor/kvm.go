@@ -41,6 +41,8 @@ type KVMStartPayload struct {
 	SessionID     string `json:"session_id"`
 	RelayURL      string `json:"relay_url"`
 	DirectConsole bool   `json:"direct_console"`
+	AutoUser      string `json:"auto_user"`  // auto-login username for direct console
+	AutoPass      string `json:"auto_pass"`  // auto-login password for direct console
 }
 
 type KVMStopPayload struct {
@@ -107,10 +109,15 @@ func (e *KVMExecutor) HandleKVMStart(raw json.RawMessage) (interface{}, error) {
 		"-e", fmt.Sprintf("REDIRECT_URL=%s", redirectURL),
 		"-e", "SCREEN_WIDTH=1280",
 		"-e", "SCREEN_HEIGHT=1024",
-		"--memory=1g",
-		"--cpus=1",
-		kvmImageName,
 	}
+
+	// For direct console: pass auto-login credentials to the container
+	if p.DirectConsole && p.AutoUser != "" {
+		args = append(args, "-e", fmt.Sprintf("AUTO_USER=%s", p.AutoUser))
+		args = append(args, "-e", fmt.Sprintf("AUTO_PASS=%s", p.AutoPass))
+	}
+
+	args = append(args, "--memory=1g", "--cpus=1", kvmImageName)
 
 	out, err := exec.Command("docker", args...).CombinedOutput()
 	if err != nil {

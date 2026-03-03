@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { Button, Space, Alert, Spin, Tooltip, Input, Tag, Typography, Card } from 'antd';
+import { Button, Space, Alert, Spin, Tooltip, Input, Tag, Typography } from 'antd';
 import {
   DesktopOutlined,
   FullscreenOutlined,
@@ -8,7 +8,6 @@ import {
   LoadingOutlined,
   SendOutlined,
   CodeOutlined,
-  LinkOutlined,
 } from '@ant-design/icons';
 import { serverAPI } from '../../../api';
 import type { Server } from '../../../types';
@@ -45,15 +44,16 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
   const [tempPass, setTempPass] = useState<string>('');
   const [showPass, setShowPass] = useState(false);
   const [commandText, setCommandText] = useState('');
-  const [consoleUrl, setConsoleUrl] = useState<string>('');
+
+  const isDirectMode = kvmMode === 'vconsole';
 
   const cleanup = useCallback(() => {
     if (rfbRef.current) { rfbRef.current.disconnect(); rfbRef.current = null; }
     if (canvasRef.current) canvasRef.current.innerHTML = '';
   }, []);
 
-  // ── Web KVM mode: start Docker→VNC→noVNC pipeline ──
-  const startWebKvm = useCallback(async () => {
+  // ── Start KVM session (both modes use the same Docker→VNC→noVNC pipeline) ──
+  const startKvm = useCallback(async () => {
     setError(''); setStatus('starting');
     setTempUser(''); setTempPass(''); setShowPass(false);
     try {
@@ -84,40 +84,10 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
     }
   }, [serverId, cleanup]);
 
-  // ── Direct Console mode: get console URL and open in new tab ──
-  const startDirectConsole = useCallback(async () => {
-    setError(''); setStatus('starting');
-    setTempUser(''); setTempPass(''); setShowPass(false);
-    setConsoleUrl('');
-    try {
-      const { data: resp } = await serverAPI.kvmStart(serverId);
-      if (!resp.success || !resp.data) throw new Error(resp.error || 'Failed to start console session');
-      const data = resp.data as {
-        session_id: string;
-        temp_user?: string;
-        temp_pass?: string;
-        console_url?: string;
-        direct_console?: boolean;
-      };
-      setSessionId(data.session_id);
-      if (data.temp_user) { setTempUser(data.temp_user); setTempPass(data.temp_pass || ''); }
-      if (data.console_url) {
-        setConsoleUrl(data.console_url);
-        window.open(data.console_url, '_blank', 'noopener,noreferrer');
-      }
-      setStatus('connected');
-    } catch (err: any) {
-      setStatus('error'); setError(err.message || 'Failed to start console'); cleanup();
-    }
-  }, [serverId, cleanup]);
-
-  const startKvm = kvmMode === 'vconsole' ? startDirectConsole : startWebKvm;
-
   const stopKvm = useCallback(async () => {
     cleanup();
     if (sessionId) { try { await serverAPI.kvmStop(serverId, sessionId); } catch { /* ignore */ } }
-    setSessionId(''); setTempUser(''); setTempPass('');
-    setConsoleUrl(''); setStatus('idle');
+    setSessionId(''); setTempUser(''); setTempPass(''); setStatus('idle');
   }, [serverId, sessionId, cleanup]);
 
   const toggleFullscreen = useCallback(() => {
@@ -144,7 +114,6 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
   }, [cleanup]);
 
   const isIdle = status === 'idle' || status === 'error';
-  const isDirectMode = kvmMode === 'vconsole';
 
   return (
     <div ref={containerRef}>
@@ -156,7 +125,7 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
           </Tag>
           <Text type="secondary" style={{ fontSize: 12 }}>
             {isDirectMode
-              ? 'Opens BMC virtual console directly in a new browser tab'
+              ? 'Opens BMC virtual console with auto-login via embedded viewer'
               : 'Opens BMC web UI via embedded VNC viewer'}
             &nbsp;&mdash; set by admin in Settings
           </Text>
@@ -166,36 +135,31 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
       <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Space wrap>
           {isIdle ? (
-            <Button type="primary" icon={isDirectMode ? <LinkOutlined /> : <DesktopOutlined />} onClick={startKvm}>
-              {isDirectMode ? 'Open BMC Console' : 'Open KVM Console'}
+            <Button type="primary" icon={<DesktopOutlined />} onClick={startKvm}>
+              {isDirectMode ? 'Open vConsole' : 'Open KVM Console'}
             </Button>
           ) : status === 'starting' ? (
             <Button disabled icon={<LoadingOutlined />}>Starting...</Button>
           ) : status === 'connecting' ? (
             <Button disabled icon={<LoadingOutlined />}>Connecting...</Button>
           ) : (
-            <Button danger icon={<PoweroffOutlined />} onClick={stopKvm}>
-              {isDirectMode ? 'End Session' : 'Disconnect'}
-            </Button>
+            <Button danger icon={<PoweroffOutlined />} onClick={stopKvm}>Disconnect</Button>
           )}
         </Space>
-        {/* Web KVM only controls */}
-        {!isDirectMode && (
-          <Space>
-            {status === 'connected' && (
-              <Tooltip title="Send Ctrl+Alt+Del"><Button onClick={handleSendCtrlAltDel}>Ctrl+Alt+Del</Button></Tooltip>
-            )}
-            {status === 'connected' && (
-              <Tooltip title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}>
-                <Button icon={isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />} onClick={toggleFullscreen} />
-              </Tooltip>
-            )}
-          </Space>
-        )}
+        <Space>
+          {status === 'connected' && (
+            <Tooltip title="Send Ctrl+Alt+Del"><Button onClick={handleSendCtrlAltDel}>Ctrl+Alt+Del</Button></Tooltip>
+          )}
+          {status === 'connected' && (
+            <Tooltip title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}>
+              <Button icon={isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />} onClick={toggleFullscreen} />
+            </Tooltip>
+          )}
+        </Space>
       </div>
 
-      {/* Web KVM: command input bar */}
-      {!isDirectMode && status === 'connected' && (
+      {/* Command input bar */}
+      {status === 'connected' && (
         <div style={{ marginBottom: 12, display: 'flex', gap: 8 }}>
           <Input
             placeholder="Type command to send to KVM console..."
@@ -213,72 +177,36 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
 
       {error && <Alert type="error" message={error} closable onClose={() => setError('')} style={{ marginBottom: 12 }} />}
 
-      {/* Direct Console: info card when session active */}
-      {isDirectMode && status === 'connected' && (
-        <Card size="small" style={{ marginBottom: 12 }}>
-          <Alert
-            type="info"
-            showIcon
-            message="BMC virtual console opened in a new browser tab"
-            description={
-              <div>
-                <p style={{ margin: '8px 0 4px' }}>
-                  The BMC virtual console page has been opened. Log in with the credentials below to access KVM.
-                </p>
-                {consoleUrl && (
-                  <p style={{ margin: '4px 0' }}>
-                    <Text type="secondary">URL: </Text>
-                    <a href={consoleUrl} target="_blank" rel="noopener noreferrer">{consoleUrl}</a>
-                  </p>
-                )}
-                <p style={{ margin: '4px 0 0', fontSize: 12, color: '#888' }}>
-                  Click "End Session" when done to clean up the temporary BMC user.
-                </p>
-              </div>
-            }
-          />
-        </Card>
-      )}
-
-      {/* Temp credentials (both modes) */}
-      {tempUser && (status === 'connecting' || status === 'connected') && (
+      {/* Temp credentials — only for Web KVM mode (Direct Console auto-logs in) */}
+      {!isDirectMode && tempUser && (status === 'connecting' || status === 'connected') && (
         <KvmCredentialsCard
           tempUser={tempUser}
           tempPass={tempPass}
           showPass={showPass}
           onShowPassChange={setShowPass}
-          rfb={isDirectMode ? null : rfbRef.current}
-          connected={!isDirectMode && status === 'connected'}
+          rfb={rfbRef.current}
+          connected={status === 'connected'}
         />
       )}
 
-      {/* Web KVM: loading spinner */}
-      {!isDirectMode && (status === 'starting' || status === 'connecting') && (
+      {/* Loading spinner */}
+      {(status === 'starting' || status === 'connecting') && (
         <div style={{ textAlign: 'center', padding: 60 }}>
           <Spin size="large" />
         </div>
       )}
 
-      {/* Direct Console: starting spinner */}
-      {isDirectMode && status === 'starting' && (
-        <div style={{ textAlign: 'center', padding: 60 }}>
-          <Spin size="large" tip="Creating temporary BMC user..." />
-        </div>
-      )}
-
-      {/* Web KVM: noVNC canvas */}
-      {!isDirectMode && (
-        <div
-          ref={canvasRef}
-          style={{
-            width: '100%',
-            minHeight: status === 'connected' ? 600 : 0,
-            background: status === 'connected' ? '#000' : 'transparent',
-            borderRadius: 4,
-            overflow: 'hidden',
-          }}
-        />
-      )}
+      {/* noVNC canvas (both modes) */}
+      <div
+        ref={canvasRef}
+        style={{
+          width: '100%',
+          minHeight: status === 'connected' ? 600 : 0,
+          background: status === 'connected' ? '#000' : 'transparent',
+          borderRadius: 4,
+          overflow: 'hidden',
+        }}
+      />
     </div>
   );
 };
