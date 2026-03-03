@@ -25,7 +25,7 @@ CDP_HOST = "127.0.0.1"
 CDP_PORT = 9222
 POLL_INTERVAL = 1.5  # seconds
 TIMEOUT = 300  # 5 minutes
-POST_LOGIN_SETTLE = 10  # seconds to wait after login redirect detected
+POST_LOGIN_SETTLE = 5   # seconds to wait after login redirect detected
 
 
 # ── CDP HTTP helpers ──
@@ -246,20 +246,27 @@ def wait_for_ready_state(timeout=30):
 def try_launch_vconsole(ws_url, fallback_url):
     """Capture the virtual console URL by intercepting the BMC's launch button.
 
-    Intercepts window.open() called by the 'Virtual Console' button on the
-    BMC dashboard.  The URL passed to window.open() often includes a one-time
-    session token required for the KVM WebSocket to authenticate — so we must
-    use that URL instead of navigating to the vconsole page directly.
+    Uses a two-phase approach to handle both sync and async click handlers:
 
-    If no button is found, or window.open() is never called (e.g. the SPA
-    navigates internally), returns fallback_url so the caller can fall back.
+    Phase 1 — Install interceptor + click button (single CDP call).
+      The interceptor stores the captured URL on window.__kvmCaptured so it
+      persists across CDP calls. We do NOT restore window.open here because
+      React/Angular click handlers fire AFTER the JS function returns.
+
+    Phase 2 — Poll for the captured URL (up to 5 × 1s).
+      Async event handlers now have time to fire and call our patched
+      window.open(). Only then do we restore the original.
+
+    If no button is found, or window.open() is never called (SPA navigates
+    internally), falls back to redirect_url.
     """
-    js = r"""
+    # Phase 1: install interceptor and click button
+    js_click = r"""
     (function() {
-        var captured = null;
-        var origOpen = window.open;
+        window.__kvmCaptured = null;
+        window.__kvmOrigOpen = window.open;
         window.open = function(url, name, features) {
-            if (url && !captured) captured = String(url);
+            if (url && !window.__kvmCaptured) window.__kvmCaptured = String(url);
             return {
                 focus: function() {}, closed: false,
                 location: {href: url || ''},
@@ -300,30 +307,77 @@ def try_launch_vconsole(ws_url, fallback_url):
             }
         }
 
-        window.open = origOpen;
-        return JSON.stringify({url: captured, clicked: found});
+        // Return click result plus any synchronously captured URL
+        return JSON.stringify({clicked: found, url: window.__kvmCaptured});
     })()
     """
+
+    # Phase 2: poll for async URL capture
+    js_poll = "(function() { return window.__kvmCaptured || null; })()"
+
+    # Phase 3: restore original window.open
+    js_restore = ("(function() { "
+                  "if (window.__kvmOrigOpen) { "
+                  "  window.open = window.__kvmOrigOpen; "
+                  "  window.__kvmOrigOpen = null; "
+                  "} })()")
+
     try:
+        # Phase 1
         s = ws_connect(ws_url)
-        resp = cdp_call(s, "Runtime.evaluate", {"expression": js})
+        resp = cdp_call(s, "Runtime.evaluate", {"expression": js_click})
         s.close()
         raw = (resp or {}).get("result", {}).get("result", {}).get("value", "")
+        click_data = {}
         if raw:
-            d = json.loads(raw)
-            print(f"CDP-redirect: vconsole button → {d}", flush=True)
-            url = d.get("url", "")
-            if url and url.startswith("http"):
-                return url
-            if d.get("clicked"):
-                # Button found and clicked, but no window.open() observed.
-                # The SPA may have navigated internally — check current URL.
-                time.sleep(2)
-                page = get_page_info()
-                if page:
-                    cur = page.get("url", "")
-                    if cur and "vconsole" in cur.lower():
-                        return cur
+            try:
+                click_data = json.loads(raw)
+            except Exception:
+                pass
+        print(f"CDP-redirect: vconsole button → {click_data}", flush=True)
+
+        # Check synchronous capture first
+        captured_url = click_data.get("url", "") or ""
+        if captured_url and captured_url.startswith("http"):
+            print(f"CDP-redirect: Captured URL (sync): {captured_url}", flush=True)
+        else:
+            captured_url = ""
+            # Phase 2: poll for async handlers (React/Angular fire after JS returns)
+            for _ in range(5):
+                time.sleep(1)
+                try:
+                    s = ws_connect(ws_url)
+                    r2 = cdp_call(s, "Runtime.evaluate", {"expression": js_poll})
+                    s.close()
+                    val = (r2 or {}).get("result", {}).get("result", {}).get("value", "")
+                    if val and isinstance(val, str) and val.startswith("http"):
+                        captured_url = val
+                        print(f"CDP-redirect: Captured URL (async): {captured_url}", flush=True)
+                        break
+                except Exception:
+                    pass
+
+        # Phase 3: restore window.open regardless of outcome
+        try:
+            s = ws_connect(ws_url)
+            cdp_call(s, "Runtime.evaluate", {"expression": js_restore})
+            s.close()
+        except Exception:
+            pass
+
+        if captured_url:
+            return captured_url
+
+        if click_data.get("clicked"):
+            # Button found and clicked, but window.open was never called.
+            # The SPA may have navigated internally — check current URL.
+            time.sleep(2)
+            page = get_page_info()
+            if page:
+                cur = page.get("url", "")
+                if cur and ("console" in cur.lower() or "kvm" in cur.lower()):
+                    return cur
+
     except Exception as e:
         print(f"CDP-redirect: try_launch_vconsole error: {e}", flush=True)
     return fallback_url
@@ -590,7 +644,7 @@ def main():
             # short for BMCs that take >8s to authenticate and redirect.
             ws_ref = [ws_debug_url]
             print("CDP-redirect: Login submitted — waiting for post-login redirect...", flush=True)
-            wait_for_post_login(settled_url, settled_title, ws_ref, timeout=90)
+            wait_for_post_login(settled_url, settled_title, ws_ref, timeout=60)
 
             # Settle pause: give the BMC session time to fully initialise.
             # During this window the dashboard SPA finishes loading its state
@@ -602,7 +656,7 @@ def main():
             # Wait for the dashboard page to be fully rendered so the
             # Virtual Console button is clickable.
             print("CDP-redirect: Waiting for dashboard to render...", flush=True)
-            wait_for_ready_state(timeout=15)
+            wait_for_ready_state(timeout=10)
             time.sleep(1)
 
             # ── Key fix: capture the real console URL via button interception ──
@@ -624,12 +678,12 @@ def main():
             # viewer time to establish its WebSocket video session.
             print("CDP-redirect: Waiting for vConsole page to load...", flush=True)
             time.sleep(2)  # let Page.navigate complete
-            loaded = wait_for_ready_state(timeout=20)
+            loaded = wait_for_ready_state(timeout=10)
             print(f"CDP-redirect: vConsole ready state: {'complete' if loaded else 'timeout'}",
                   flush=True)
             # Extra settle for KVM WebSocket to initialise video session
             print("CDP-redirect: Waiting for KVM viewer to initialise...", flush=True)
-            time.sleep(5)
+            time.sleep(3)
         else:
             # Form not found — fall back to watching for manual login
             print("CDP-redirect: Auto-login failed, watching for manual login...",

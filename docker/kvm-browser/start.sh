@@ -14,16 +14,15 @@ done
 chromium-browser \
   --no-sandbox \
   --disable-gpu \
-  --disable-software-rasterizer \
   --disable-dev-shm-usage \
   --no-first-run \
   --no-default-browser-check \
   --disable-translate \
   --disable-extensions \
-  --disable-background-networking \
   --disable-sync \
   --disable-features=TranslateUI \
   --ignore-certificate-errors \
+  --allow-running-insecure-content \
   --kiosk \
   --remote-debugging-port=9222 \
   --window-size=${SCREEN_WIDTH},${SCREEN_HEIGHT} \
