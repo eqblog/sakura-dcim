@@ -1,14 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Typography, Form, Input, Button, ColorPicker, message, Space, Divider, Descriptions, Tag } from 'antd';
-import { SaveOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Card, Typography, Form, Input, Button, ColorPicker, message, Space, Divider, Descriptions, Tag, Radio } from 'antd';
+import { SaveOutlined, ReloadOutlined, DesktopOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth';
 import { useBrandingStore } from '../../store/branding';
 import { tenantAPI } from '../../api';
 
 const { Title, Text } = Typography;
 
+const KVM_MODE_KEY = 'sakura_kvm_mode';
+type KvmMode = 'webkvm' | 'ikvm';
+
 const SettingsPage: React.FC = () => {
   const { user, fetchUser } = useAuthStore();
+  const [kvmMode, setKvmMode] = useState<KvmMode>(() => (localStorage.getItem(KVM_MODE_KEY) as KvmMode) || 'webkvm');
   const { setBrandingFromTenant } = useBrandingStore();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
@@ -54,9 +58,45 @@ const SettingsPage: React.FC = () => {
     setSaving(false);
   };
 
+  const handleKvmModeChange = (mode: KvmMode) => {
+    setKvmMode(mode);
+    localStorage.setItem(KVM_MODE_KEY, mode);
+    message.success(`KVM mode set to ${mode === 'webkvm' ? 'Web KVM (Docker Isolation)' : 'Direct iKVM (BMC Native)'}`);
+  };
+
   return (
     <div>
       <Title level={4}>Settings</Title>
+
+      <Card
+        title={<><DesktopOutlined style={{ marginRight: 8 }} />KVM Preferences</>}
+        style={{ marginBottom: 16 }}
+      >
+        <Space direction="vertical" style={{ width: '100%' }} size={12}>
+          <div>
+            <Text strong style={{ display: 'block', marginBottom: 8 }}>KVM Console Mode</Text>
+            <Radio.Group value={kvmMode} onChange={(e) => handleKvmModeChange(e.target.value)}>
+              <Space direction="vertical">
+                <Radio value="webkvm">
+                  <Text strong>Web KVM</Text>
+                  <Text type="secondary" style={{ display: 'block', marginLeft: 24, fontSize: 12 }}>
+                    Docker-isolated Chromium browser connects to BMC web UI. Secure — user never accesses BMC directly.
+                  </Text>
+                </Radio>
+                <Radio value="ikvm">
+                  <Text strong>Direct iKVM</Text>
+                  <Text type="secondary" style={{ display: 'block', marginLeft: 24, fontSize: 12 }}>
+                    Open the BMC&apos;s native HTML5/Java KVM console directly. Requires network access to the BMC management VLAN.
+                  </Text>
+                </Radio>
+              </Space>
+            </Radio.Group>
+          </div>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Current mode: <Tag color={kvmMode === 'webkvm' ? 'blue' : 'orange'}>{kvmMode === 'webkvm' ? 'Web KVM' : 'Direct iKVM'}</Tag>
+          </Text>
+        </Space>
+      </Card>
 
       <Card title="Tenant Information" style={{ marginBottom: 16 }}>
         <Descriptions column={2} size="small">

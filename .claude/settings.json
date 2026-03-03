@@ -13,7 +13,16 @@
       "Bash(go build ./...)",
       "Bash(npx tsc --noEmit)",
       "Bash(npm run build)",
-      "Bash(go mod init github.com/sakura-dcim/sakura-dcim/agent)"
+      "Bash(go mod init github.com/sakura-dcim/sakura-dcim/agent)",
+      "Bash(npx vite build)",
+      "Bash(wc -l backend/internal/service/*.go backend/internal/handler/*.go backend/internal/repository/postgres/*.go)",
+      "Bash(xargs wc -l)",
+      "Bash(grep -c \"Coming in Phase\\\\|TODO\\\\|placeholder\" web/src/pages/**/*.tsx)",
+      "Bash(go test ./internal/domain/... ./internal/config/... ./internal/middleware/... ./internal/service/... -v)",
+      "Bash",
+      "WebFetch",
+      "Read"
+
     ]
   }
 }

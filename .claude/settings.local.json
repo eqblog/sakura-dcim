@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go test ./... -v)",
+      "Bash(go test -v -run TestServerLifecycle -count=1 -timeout=60s ./internal/handler/)",
+      "Bash(go test -count=1 ./...)",
+      "Bash(curl -s -X POST http://localhost:8080/api/v1/auth/login -H \"Content-Type: application/json\" -d '{\"\"email\"\":\"\"admin@sakura-dcim.local\"\",\"\"password\"\":\"\"admin123\"\"}')",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/api/v1/health)",
+      "Bash(curl -s http://localhost:8080/api/v1/auth/login -H \"Content-Type: application/json\" -d '{\"\"email\"\":\"\"admin@sakura-dcim.local\"\",\"\"password\"\":\"\"admin123\"\"}')",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAxIiwidGVuYW50X2lkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAxIiwicm9sZV9pZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsImlzcyI6InNha3VyYS1kY2ltIiwiZXhwIjoxNzcxOTQyNzMyLCJpYXQiOjE3NzE5NDE4MzJ9.zOTF3GQ_7gbZsHz529ArWF6MnFXZ_iCdbiEy6NAPQf8\")",
+      "Bash(curl -s http://localhost:8080/api/v1/os-profiles -H \"Authorization: Bearer $TOKEN\")",
+      "Bash(python -m json.tool)"
+    ]
+  }
+}
