@@ -156,7 +156,7 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
           </Tag>
           <Text type="secondary" style={{ fontSize: 12 }}>
             {isDirectMode
-              ? 'Opens BMC web console in a new browser tab'
+              ? 'Opens BMC virtual console directly in a new browser tab'
               : 'Opens BMC web UI via embedded VNC viewer'}
             &nbsp;&mdash; set by admin in Settings
           </Text>
@@ -219,11 +219,11 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
           <Alert
             type="info"
             showIcon
-            message="BMC console opened in a new browser tab"
+            message="BMC virtual console opened in a new browser tab"
             description={
               <div>
                 <p style={{ margin: '8px 0 4px' }}>
-                  Log in to the BMC web interface and navigate to the virtual console / remote control section.
+                  The BMC virtual console page has been opened. Log in with the credentials below to access KVM.
                 </p>
                 {consoleUrl && (
                   <p style={{ margin: '4px 0' }}>

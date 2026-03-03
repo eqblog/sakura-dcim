@@ -281,7 +281,8 @@ func (s *KVMService) startDirectConsoleSession(ctx context.Context, server *doma
 	return session, nil
 }
 
-// buildConsoleURL returns the vendor-specific BMC web console URL for direct access.
+// buildConsoleURL returns the vendor-specific virtual console URL,
+// going directly to the KVM/vConsole page (not the BMC dashboard/login).
 func buildConsoleURL(bmcType, ip string) string {
 	// Strip CIDR notation if present (e.g. "10.0.0.1/32" → "10.0.0.1")
 	if idx := strings.IndexByte(ip, '/'); idx != -1 {
@@ -289,15 +290,15 @@ func buildConsoleURL(bmcType, ip string) string {
 	}
 	switch bmcType {
 	case "dell_idrac":
-		return fmt.Sprintf("https://%s/restgui/start.html", ip)
+		return fmt.Sprintf("https://%s/restgui/vconsole/index.html", ip)
 	case "hp_ilo":
-		return fmt.Sprintf("https://%s/html/login.html", ip)
+		return fmt.Sprintf("https://%s/html/IRC.html", ip)
 	case "supermicro":
-		return fmt.Sprintf("https://%s/cgi/login.cgi", ip)
+		return fmt.Sprintf("https://%s/cgi/ikvm.cgi", ip)
 	case "lenovo_xcc":
-		return fmt.Sprintf("https://%s/index.html", ip)
+		return fmt.Sprintf("https://%s/index.html#/remotecontrol/kvm", ip)
 	case "huawei_ibmc":
-		return fmt.Sprintf("https://%s/login.html", ip)
+		return fmt.Sprintf("https://%s/bmc/virtualConsole", ip)
 	default:
 		return fmt.Sprintf("https://%s", ip)
 	}
