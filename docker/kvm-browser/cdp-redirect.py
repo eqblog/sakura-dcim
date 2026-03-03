@@ -25,7 +25,7 @@ CDP_HOST = "127.0.0.1"
 CDP_PORT = 9222
 POLL_INTERVAL = 1.5  # seconds
 TIMEOUT = 300  # 5 minutes
-POST_LOGIN_SETTLE = 2  # seconds to wait after login redirect detected
+POST_LOGIN_SETTLE = 10  # seconds to wait after login redirect detected
 
 
 # ── CDP HTTP helpers ──
@@ -212,6 +212,35 @@ def wait_for_url_stable(timeout=20):
             stable_since = time.time()
 
     return get_page_info()
+
+
+def wait_for_ready_state(timeout=30):
+    """Wait until document.readyState == 'complete' on the current page.
+
+    Called after Page.navigate to ensure the vConsole page is fully
+    loaded before we let x11vnc start — so the user never sees a
+    half-loaded page or a blank screen.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        page = get_page_info()
+        if page:
+            ws_url = page.get("webSocketDebuggerUrl", "")
+            if ws_url:
+                try:
+                    s = ws_connect(ws_url)
+                    resp = cdp_call(s, "Runtime.evaluate",
+                                    {"expression": "document.readyState"})
+                    s.close()
+                    val = ((resp or {}).get("result", {})
+                                       .get("result", {})
+                                       .get("value", ""))
+                    if val == "complete":
+                        return True
+                except Exception:
+                    pass
+        time.sleep(1)
+    return False
 
 
 def auto_login(ws_url, username, password):
@@ -491,6 +520,19 @@ def main():
 
             result = navigate_tab(nav_ws, redirect_url)
             print(f"CDP-redirect: Navigate result: {result}", flush=True)
+
+            # Wait for the vConsole page to fully load, then give the KVM
+            # viewer's WebSocket extra time to establish its video session.
+            # This ensures x11vnc starts only AFTER the viewer is connected,
+            # so the user sees the live server screen instead of "Connecting Viewer...".
+            print("CDP-redirect: Waiting for vConsole page to load...", flush=True)
+            time.sleep(2)  # let Page.navigate complete
+            loaded = wait_for_ready_state(timeout=30)
+            print(f"CDP-redirect: vConsole ready state: {'complete' if loaded else 'timeout'}",
+                  flush=True)
+            # Extra settle for KVM WebSocket to initialise video session
+            print("CDP-redirect: Waiting for KVM viewer to initialise...", flush=True)
+            time.sleep(8)
         else:
             # Form not found — fall back to watching for manual login
             print("CDP-redirect: Auto-login failed, watching for manual login...",

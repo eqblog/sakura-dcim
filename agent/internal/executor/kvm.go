@@ -144,12 +144,11 @@ func (e *KVMExecutor) HandleKVMStart(raw json.RawMessage) (interface{}, error) {
 
 	// Wait for VNC server to be fully ready (RFB handshake, not just TCP).
 	// Direct console mode runs cdp-redirect.py synchronously before starting
-	// x11vnc, so the VNC readiness probe doubles as "auto-login complete".
-	// Allow up to 90s for direct console (auto-login + BMC redirect + navigate),
-	// 20s for web KVM (x11vnc starts immediately after Chromium).
+	// x11vnc: auto-login + post-login settle (10s) + page load + KVM WS settle (8s).
+	// Allow up to 150s for direct console, 20s for web KVM.
 	vncTimeout := 20 * time.Second
 	if p.DirectConsole {
-		vncTimeout = 90 * time.Second
+		vncTimeout = 150 * time.Second
 	}
 	if err := waitForVNC(gateway+":"+vncPort, vncTimeout); err != nil {
 		// Log container status for diagnostics

@@ -230,7 +230,7 @@ const KvmTab: React.FC<KvmTabProps> = ({ server }) => {
               <Text type="secondary" style={{ fontSize: 12 }}>
                 Auto-logging into BMC and navigating to vConsole…
                 <br />
-                This may take up to 60 seconds.
+                This may take up to 90 seconds.
               </Text>
             </div>
           )}
