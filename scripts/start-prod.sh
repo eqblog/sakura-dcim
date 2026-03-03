@@ -138,12 +138,18 @@ fi
 echo "  OK"
 echo ""
 
-# ─── 1. Build and start ───
-echo "[1/4] Building and starting all services..."
+# ─── Build KVM browser image ───
+# Always rebuild so that changes to cdp-redirect.py / start.sh are picked up
+echo "[1/5] Building KVM browser image..."
+docker build -t sakura-dcim/kvm-browser:latest "$ROOT/docker/kvm-browser/"
+echo "  KVM image built."
+
+# ─── 2. Build and start ───
+echo "[2/5] Building and starting all services..."
 cd "$ROOT" && docker compose up -d --build --remove-orphans
 
-# ─── 2. Wait for healthy ───
-echo "[2/4] Waiting for PostgreSQL to be healthy..."
+# ─── 3. Wait for healthy ───
+echo "[3/5] Waiting for PostgreSQL to be healthy..."
 for i in $(seq 1 60); do
   if docker exec sakura-postgres pg_isready -U sakura -d sakura_dcim -q 2>/dev/null; then
     echo "  PostgreSQL ready."
@@ -155,8 +161,8 @@ for i in $(seq 1 60); do
   sleep 1
 done
 
-# ─── 3. Run migrations ───
-echo "[3/4] Running database migrations..."
+# ─── 4. Run migrations ───
+echo "[4/5] Running database migrations..."
 docker exec sakura-backend sh -c '
   if [ -d /app/migrations ] && ls /app/migrations/*.up.sql >/dev/null 2>&1; then
     apk add --no-cache --quiet curl 2>/dev/null
@@ -171,15 +177,10 @@ docker exec sakura-backend sh -c '
   fi
 ' 2>&1 || true
 
-# ─── 4. Optional: set up local agent ───
+# ─── 5. Optional: set up local agent ───
 AGENT_PID=""
 if [ "$WITH_AGENT" = "1" ]; then
-  # Build KVM Docker image for agent
-  echo "[4/4] Building KVM image & setting up local agent..."
-  if ! docker images --format '{{.Repository}}:{{.Tag}}' | grep -q 'sakura-dcim/kvm-browser:latest'; then
-    docker build -t sakura-dcim/kvm-browser:latest "$ROOT/docker/kvm-browser/"
-    echo "  KVM image built."
-  fi
+  echo "[5/5] Setting up local agent..."
 
   AGENT_CONFIG="$ROOT/agent/.dev-config.yaml"
 

@@ -1,4 +1,4 @@
-.PHONY: start start-prod update stop dev-backend dev-web build migrate migrate-down docker-up docker-down clean test deploy-agent
+.PHONY: start start-prod update stop dev-backend dev-web build migrate migrate-down docker-up docker-down clean test deploy-agent build-kvm
 
 # ============================================================
 # One-click commands
@@ -72,6 +72,9 @@ docker-down:
 
 docker-build:
 	docker compose build
+
+build-kvm:
+	docker build -t sakura-dcim/kvm-browser:latest docker/kvm-browser/
 
 # Test
 test:

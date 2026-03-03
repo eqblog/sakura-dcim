@@ -241,13 +241,10 @@ for i in $(seq 1 30); do
 done
 
 # ─── 6. Build KVM Docker image ───
+# Always rebuild to pick up changes to start.sh / cdp-redirect.py
 echo "[8/9] Building KVM browser image..."
-if ! docker images --format '{{.Repository}}:{{.Tag}}' | grep -q 'sakura-dcim/kvm-browser:latest'; then
-  docker build -t sakura-dcim/kvm-browser:latest "$ROOT/docker/kvm-browser/"
-  echo "  KVM image built."
-else
-  echo "  KVM image already exists."
-fi
+docker build -t sakura-dcim/kvm-browser:latest "$ROOT/docker/kvm-browser/"
+echo "  KVM image built."
 
 # ─── 7. Auto-create local dev agent ───
 echo "[9/9] Setting up local dev agent..."
