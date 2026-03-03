@@ -131,15 +131,15 @@ const SettingsPage: React.FC = () => {
             <Radio.Group>
               <Space direction="vertical">
                 <Radio value="webkvm">
-                  <Text strong>Web KVM (Full BMC)</Text>
+                  <Text strong>Web KVM</Text>
                   <Text type="secondary" style={{ display: 'block', marginLeft: 24, fontSize: 12 }}>
-                    Opens full BMC web UI. Users can navigate to any BMC feature.
+                    Opens BMC web UI in an embedded VNC viewer (Docker + Chromium). Works even when BMC is not directly accessible from browser.
                   </Text>
                 </Radio>
                 <Radio value="vconsole">
-                  <Text strong>Direct vConsole</Text>
+                  <Text strong>Direct Console</Text>
                   <Text type="secondary" style={{ display: 'block', marginLeft: 24, fontSize: 12 }}>
-                    Auto-navigates to virtual console after login. Supports iDRAC, iLO, Supermicro, Lenovo XCC, Huawei iBMC.
+                    Opens BMC web console directly in a new browser tab. Requires browser to have network access to the BMC IP.
                   </Text>
                 </Radio>
               </Space>

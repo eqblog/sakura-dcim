@@ -87,6 +87,10 @@ func (h *KVMHandler) StartKVM(c *gin.Context) {
 		respData["temp_user"] = session.TempUser
 		respData["temp_pass"] = session.TempPass
 	}
+	if session.ConsoleURL != "" {
+		respData["console_url"] = session.ConsoleURL
+		respData["direct_console"] = true
+	}
 
 	c.JSON(http.StatusOK, domain.APIResponse{
 		Success: true,
