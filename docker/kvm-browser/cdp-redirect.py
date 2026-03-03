@@ -4,12 +4,12 @@
 Monitors the Chromium page via Chrome DevTools Protocol.
 
 When AUTO_USER / AUTO_PASS are set (direct console mode):
-  1. Waits for the login page to load
+  1. Waits for login page to fully load & settle (handles redirects/SPA routing)
   2. Auto-fills username/password and submits via JavaScript
-  3. After login detected, navigates to REDIRECT_URL (vConsole)
+  3. Waits fixed delay for login to complete, then navigates to REDIRECT_URL
 
-When only REDIRECT_URL is set (legacy mode):
-  Polls until URL or title changes, then navigates to REDIRECT_URL.
+When only REDIRECT_URL is set (web KVM manual-login mode):
+  Waits for URL to settle, polls until URL/title changes, then navigates.
 
 Uses only Python stdlib (raw WebSocket via socket).
 """
@@ -18,7 +18,6 @@ import json
 import os
 import socket
 import struct
-import sys
 import time
 import urllib.request
 
@@ -26,7 +25,10 @@ CDP_HOST = "127.0.0.1"
 CDP_PORT = 9222
 POLL_INTERVAL = 1.5  # seconds
 TIMEOUT = 300  # 5 minutes
+LOGIN_SETTLE_SECS = 8  # wait after login submission before redirect
 
+
+# ── CDP HTTP helpers ──
 
 def cdp_get_targets():
     """Fetch target list from CDP HTTP endpoint."""
@@ -37,8 +39,16 @@ def cdp_get_targets():
         return []
 
 
+def get_page_info():
+    """Get first page target from CDP."""
+    targets = cdp_get_targets()
+    pages = [t for t in targets if t.get("type") == "page"]
+    return pages[0] if pages else None
+
+
+# ── Minimal WebSocket client (RFC 6455) ──
+
 def ws_connect(url):
-    """Minimal WebSocket client connect (RFC 6455)."""
     url = url.replace("ws://", "")
     host_port, path = url.split("/", 1)
     host, port = host_port.split(":")
@@ -69,16 +79,13 @@ def ws_connect(url):
 
     if b"101" not in response.split(b"\r\n")[0]:
         raise ConnectionError(f"WebSocket handshake rejected: {response[:200]}")
-
     return s
 
 
 def ws_send(s, message):
-    """Send a text frame (masked) over WebSocket."""
     payload = message.encode("utf-8")
     frame = bytearray()
     frame.append(0x81)
-
     length = len(payload)
     if length < 126:
         frame.append(0x80 | length)
@@ -88,7 +95,6 @@ def ws_send(s, message):
     else:
         frame.append(0x80 | 127)
         frame.extend(struct.pack(">Q", length))
-
     mask = b"\x00\x00\x00\x00"
     frame.extend(mask)
     frame.extend(payload)
@@ -96,7 +102,6 @@ def ws_send(s, message):
 
 
 def ws_recv(s, timeout=5):
-    """Receive a WebSocket text frame."""
     s.settimeout(timeout)
     try:
         header = s.recv(2)
@@ -105,26 +110,21 @@ def ws_recv(s, timeout=5):
         opcode = header[0] & 0x0F
         masked = (header[1] & 0x80) != 0
         length = header[1] & 0x7F
-
         if length == 126:
             length = struct.unpack(">H", s.recv(2))[0]
         elif length == 127:
             length = struct.unpack(">Q", s.recv(8))[0]
-
         if masked:
             mask_key = s.recv(4)
-
         data = b""
         while len(data) < length:
             chunk = s.recv(length - len(data))
             if not chunk:
                 break
             data += chunk
-
         if masked:
             data = bytes(b ^ mask_key[i % 4] for i, b in enumerate(data))
-
-        if opcode == 0x1:  # text
+        if opcode == 0x1:
             return data.decode("utf-8", errors="replace")
         return None
     except (socket.timeout, OSError):
@@ -135,14 +135,12 @@ _cdp_id = 0
 
 
 def cdp_call(s, method, params=None):
-    """Send a CDP command and return the response."""
     global _cdp_id
     _cdp_id += 1
     msg = {"id": _cdp_id, "method": method}
     if params:
         msg["params"] = params
     ws_send(s, json.dumps(msg))
-    # Read responses until we get ours
     deadline = time.time() + 15
     while time.time() < deadline:
         raw = ws_recv(s, timeout=5)
@@ -157,8 +155,10 @@ def cdp_call(s, method, params=None):
     return None
 
 
+# ── High-level helpers ──
+
 def navigate_tab(ws_url, target_url):
-    """Use CDP Page.navigate to change URL of existing tab."""
+    """Use CDP Page.navigate to change URL of existing tab (preserves cookies)."""
     try:
         s = ws_connect(ws_url)
         resp = cdp_call(s, "Page.navigate", {"url": target_url})
@@ -169,39 +169,108 @@ def navigate_tab(ws_url, target_url):
         return None
 
 
-def auto_login(ws_url, username, password):
-    """Use CDP to auto-fill login form and submit.
+def navigate_current_page(target_url):
+    """Navigate the current tab to target_url using fresh page info."""
+    page = get_page_info()
+    if not page:
+        print("CDP-redirect: No page found for navigation", flush=True)
+        return None
+    ws_url = page.get("webSocketDebuggerUrl", "")
+    if not ws_url:
+        print("CDP-redirect: No WebSocket debug URL", flush=True)
+        return None
+    print(f"CDP-redirect: Navigating to {target_url}", flush=True)
+    result = navigate_tab(ws_url, target_url)
+    print(f"CDP-redirect: Navigate result: {result}", flush=True)
+    return result
 
-    Works with React/Angular SPAs by using native setter to bypass
-    framework's synthetic event system.
+
+def wait_for_url_stable(timeout=20):
+    """Wait until the page URL stops changing for 3 consecutive seconds.
+
+    Handles initial redirects and SPA routing that change the URL after load.
+    Returns the final stable page info dict, or None on timeout.
     """
-    # Escape special characters for JS string embedding
+    last_url = ""
+    stable_since = time.time()
+    deadline = time.time() + timeout
+
+    while time.time() < deadline:
+        time.sleep(1)
+        page = get_page_info()
+        if not page:
+            continue
+        current_url = page.get("url", "")
+        if not current_url or "chrome" in current_url:
+            continue
+
+        if current_url == last_url:
+            if time.time() - stable_since >= 3:
+                return page
+        else:
+            last_url = current_url
+            stable_since = time.time()
+
+    return get_page_info()
+
+
+def auto_login(ws_url, username, password):
+    """Auto-fill login form and submit via CDP Runtime.evaluate.
+
+    Uses vendor-specific selectors (iDRAC, iLO, Supermicro, etc.) with
+    generic fallback. React/Angular compatibility via native setter.
+    """
     safe_user = username.replace("\\", "\\\\").replace("'", "\\'")
     safe_pass = password.replace("\\", "\\\\").replace("'", "\\'")
 
     js = """
     (function() {
         function setVal(el, val) {
-            var nativeSetter = Object.getOwnPropertyDescriptor(
-                window.HTMLInputElement.prototype, 'value').set;
-            nativeSetter.call(el, val);
+            // Use native setter to bypass React/Angular controlled inputs
+            var desc = Object.getOwnPropertyDescriptor(
+                window.HTMLInputElement.prototype, 'value');
+            if (desc && desc.set) {
+                desc.set.call(el, val);
+            } else {
+                el.value = val;
+            }
             el.dispatchEvent(new Event('input', {bubbles: true}));
             el.dispatchEvent(new Event('change', {bubbles: true}));
+            // AngularJS compatibility
+            if (typeof angular !== 'undefined') {
+                try { angular.element(el).triggerHandler('input'); } catch(e) {}
+            }
         }
 
-        // Find visible text-like input and password input
-        var inputs = document.querySelectorAll('input');
-        var userEl = null, passEl = null;
-        for (var i = 0; i < inputs.length; i++) {
-            var inp = inputs[i];
-            var type = (inp.type || '').toLowerCase();
-            // Skip hidden inputs
-            if (inp.offsetParent === null && inp.offsetWidth === 0) continue;
-            if (type === 'hidden') continue;
-            if (type === 'password' && !passEl) {
-                passEl = inp;
-            } else if ((type === 'text' || type === 'email' || type === '') && !userEl) {
-                userEl = inp;
+        // ── Find username field: vendor-specific first, then generic ──
+        var userEl = document.querySelector('#user')
+                  || document.querySelector('#iDRAC_Username')
+                  || document.querySelector('input[name="user"]')
+                  || document.querySelector('input[name="username"]')
+                  || document.querySelector('#username')
+                  || document.querySelector('#login-user-name')
+                  || document.querySelector('input[name="Login"]');
+
+        // ── Find password field ──
+        var passEl = document.querySelector('#password')
+                  || document.querySelector('#iDRAC_Password')
+                  || document.querySelector('input[name="password"]')
+                  || document.querySelector('#pwd')
+                  || document.querySelector('#login-password')
+                  || document.querySelector('input[name="Password"]');
+
+        // Generic fallback: find visible text + password inputs
+        if (!userEl || !passEl) {
+            var inputs = document.querySelectorAll('input');
+            for (var i = 0; i < inputs.length; i++) {
+                var inp = inputs[i];
+                var type = (inp.type || '').toLowerCase();
+                if (inp.offsetParent === null && inp.offsetWidth === 0) continue;
+                if (type === 'hidden') continue;
+                if (type === 'password' && !passEl) { passEl = inp; }
+                else if ((type === 'text' || type === 'email' || type === '') && !userEl) {
+                    userEl = inp;
+                }
             }
         }
 
@@ -212,28 +281,42 @@ def auto_login(ws_url, username, password):
         passEl.focus();
         setVal(passEl, '""" + safe_pass + """');
 
-        // Find submit button
-        var btn = null;
-        var buttons = document.querySelectorAll('button, input[type="submit"]');
-        for (var j = 0; j < buttons.length; j++) {
-            var b = buttons[j];
-            if (b.offsetParent === null && b.offsetWidth === 0) continue;
-            var text = (b.textContent || b.value || '').toLowerCase();
-            if (text.match(/log\\s*in|sign\\s*in|submit|login/)) {
-                btn = b;
-                break;
+        // ── Find submit button: vendor-specific first ──
+        var btn = document.querySelector('#btnOK')
+               || document.querySelector('#login-btn')
+               || document.querySelector('#btnLogin')
+               || document.querySelector('button[type="submit"]')
+               || document.querySelector('input[type="submit"]');
+
+        // Generic: find button by visible text
+        if (!btn) {
+            var buttons = document.querySelectorAll(
+                'button, input[type="submit"], input[type="button"], a.btn');
+            for (var j = 0; j < buttons.length; j++) {
+                var b = buttons[j];
+                if (b.offsetParent === null && b.offsetWidth === 0) continue;
+                var text = (b.textContent || b.value || '').trim().toLowerCase();
+                if (/^(log\\s*in|sign\\s*in|submit|login|登录)$/.test(text)) {
+                    btn = b;
+                    break;
+                }
             }
         }
+        // Last resort: first button/submit inside the form
         if (!btn) {
             var form = passEl.closest('form');
             if (form) btn = form.querySelector('button, input[type="submit"]');
         }
+
         if (btn) {
             btn.click();
             return 'clicked';
         }
 
-        // Fallback: press Enter on password field
+        // Absolute fallback: submit the form or press Enter
+        var form = passEl.closest('form');
+        if (form) { form.submit(); return 'form_submitted'; }
+
         passEl.dispatchEvent(new KeyboardEvent('keydown',
             {key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true}));
         passEl.dispatchEvent(new KeyboardEvent('keypress',
@@ -244,7 +327,7 @@ def auto_login(ws_url, username, password):
     })()
     """
 
-    for attempt in range(10):
+    for attempt in range(12):
         try:
             s = ws_connect(ws_url)
             resp = cdp_call(s, "Runtime.evaluate", {"expression": js})
@@ -257,48 +340,49 @@ def auto_login(ws_url, username, password):
 
             print(f"  auto-login attempt {attempt + 1}: {result_val}", flush=True)
 
-            if result_val in ("clicked", "enter_sent"):
+            if result_val in ("clicked", "enter_sent", "form_submitted"):
                 return True
             # Form not rendered yet, retry
-            time.sleep(1.5)
+            time.sleep(2)
         except Exception as e:
             print(f"  auto-login attempt {attempt + 1} error: {e}", flush=True)
-            time.sleep(1.5)
+            time.sleep(2)
 
     return False
 
 
-def wait_for_page_change(initial_url, initial_title, ws_debug_url_ref):
-    """Poll until URL or title changes (login success detected)."""
+def wait_for_page_change(baseline_url, baseline_title, ws_debug_url_ref):
+    """Poll until URL or title changes from the baseline (manual login detected)."""
     deadline = time.time() + TIMEOUT
     while time.time() < deadline:
         time.sleep(POLL_INTERVAL)
-        targets = cdp_get_targets()
-        pages = [t for t in targets if t.get("type") == "page"]
-        if not pages:
+        page = get_page_info()
+        if not page:
             continue
 
-        current_url = pages[0].get("url", "")
-        current_title = pages[0].get("title", "")
-        ws_debug_url_ref[0] = pages[0].get("webSocketDebuggerUrl", ws_debug_url_ref[0])
+        current_url = page.get("url", "")
+        current_title = page.get("title", "")
+        ws_debug_url_ref[0] = page.get("webSocketDebuggerUrl", ws_debug_url_ref[0])
 
-        url_changed = current_url and current_url != initial_url
+        url_changed = current_url and current_url != baseline_url
         title_changed = (
             current_title
-            and initial_title
-            and current_title != initial_title
+            and baseline_title
+            and current_title != baseline_title
             and current_title not in ("", "about:blank")
         )
 
         if url_changed or title_changed:
             reason = "URL" if url_changed else "title"
             print(f"CDP-redirect: Login detected ({reason} changed)", flush=True)
-            print(f"  URL:   {current_url}", flush=True)
-            print(f"  Title: {current_title}", flush=True)
+            print(f"  from: {baseline_url}  /  {baseline_title}", flush=True)
+            print(f"  to:   {current_url}  /  {current_title}", flush=True)
             return True
 
     return False
 
+
+# ── Main ──
 
 def main():
     redirect_url = os.environ.get("REDIRECT_URL", "").strip()
@@ -313,53 +397,66 @@ def main():
     if auto_user:
         print(f"CDP-redirect: Auto-login enabled (user={auto_user})", flush=True)
 
-    # Wait for Chromium CDP to be available
-    initial_url = None
-    initial_title = None
-    ws_debug_url = None
-
+    # 1. Wait for Chromium CDP to become available
     for attempt in range(40):
         time.sleep(1)
-        targets = cdp_get_targets()
-        pages = [t for t in targets if t.get("type") == "page"]
-        if pages:
-            initial_url = pages[0].get("url", "")
-            initial_title = pages[0].get("title", "")
-            ws_debug_url = pages[0].get("webSocketDebuggerUrl", "")
-            if initial_url and "chrome" not in initial_url:
+        page = get_page_info()
+        if page:
+            url = page.get("url", "")
+            if url and "chrome" not in url:
                 break
 
-    if not initial_url or not ws_debug_url:
-        print("CDP-redirect: Could not get initial page info, aborting.", flush=True)
+    # 2. Wait for page URL to SETTLE (handles redirects + SPA routing).
+    #    This is critical: iDRAC redirects restgui/start.html → login.html,
+    #    React SPAs change hash to #/login, etc.  We must wait for all of
+    #    that to finish BEFORE capturing the baseline or attempting login.
+    print("CDP-redirect: Waiting for page URL to settle...", flush=True)
+    page = wait_for_url_stable(timeout=20)
+    if not page:
+        print("CDP-redirect: Could not get stable page info, aborting.", flush=True)
         return
 
-    print(f"CDP-redirect: Initial URL={initial_url}", flush=True)
-    print(f"CDP-redirect: Initial title={initial_title}", flush=True)
+    settled_url = page.get("url", "")
+    settled_title = page.get("title", "")
+    ws_debug_url = page.get("webSocketDebuggerUrl", "")
 
-    ws_ref = [ws_debug_url]
+    print(f"CDP-redirect: Settled URL   = {settled_url}", flush=True)
+    print(f"CDP-redirect: Settled title = {settled_title}", flush=True)
 
-    # Auto-login if credentials provided
-    if auto_user:
-        # Wait a bit for the login form to render (SPAs need time)
-        time.sleep(2)
+    if auto_user and ws_debug_url:
+        # ── Auto-login mode ──
+        # The page URL is now stable (login form should be rendered).
         print("CDP-redirect: Attempting auto-login...", flush=True)
         success = auto_login(ws_debug_url, auto_user, auto_pass)
+
         if success:
-            print("CDP-redirect: Auto-login submitted, waiting for page change...", flush=True)
+            # Use fixed delay instead of URL-change monitoring.
+            # URL-change detection causes false positives from SPA routing,
+            # intermediate redirects, and title updates during login.
+            print(f"CDP-redirect: Login submitted, waiting {LOGIN_SETTLE_SECS}s "
+                  f"for session to establish...", flush=True)
+            time.sleep(LOGIN_SETTLE_SECS)
+            navigate_current_page(redirect_url)
         else:
-            print("CDP-redirect: Auto-login failed (form not found), waiting for manual login...", flush=True)
-
-    # Wait for login (URL or title change)
-    if wait_for_page_change(initial_url, initial_title, ws_ref):
-        # Brief pause to let post-login JS settle
-        time.sleep(1.5)
-
-        # Navigate existing tab to console URL (preserves session)
-        print(f"CDP-redirect: Navigating to {redirect_url}", flush=True)
-        result = navigate_tab(ws_ref[0], redirect_url)
-        print(f"CDP-redirect: Navigate result: {result}", flush=True)
+            # Form not found — fall back to watching for manual login
+            print("CDP-redirect: Auto-login failed, watching for manual login...",
+                  flush=True)
+            ws_ref = [ws_debug_url]
+            if wait_for_page_change(settled_url, settled_title, ws_ref):
+                time.sleep(1.5)
+                navigate_tab(ws_ref[0], redirect_url)
+            else:
+                print("CDP-redirect: Timeout — no login detected.", flush=True)
     else:
-        print("CDP-redirect: Timeout — no login detected.", flush=True)
+        # ── Manual login mode (web KVM: user logs in via VNC) ──
+        ws_ref = [ws_debug_url]
+        if wait_for_page_change(settled_url, settled_title, ws_ref):
+            time.sleep(1.5)
+            print(f"CDP-redirect: Navigating to {redirect_url}", flush=True)
+            result = navigate_tab(ws_ref[0], redirect_url)
+            print(f"CDP-redirect: Navigate result: {result}", flush=True)
+        else:
+            print("CDP-redirect: Timeout — no login detected.", flush=True)
 
 
 if __name__ == "__main__":
